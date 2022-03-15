@@ -11,6 +11,7 @@ from copy import copy
 
 # means and standard deviations
 MEANS = {'SI2017': [ 98.01336916, 106.46617234, 93.43728537], 
+        'IMAGE2017': [ 98.01336916, 106.46617234, 93.43728537], 
         'ALTI' : 1878.01851825,
         'VHM': 3.90032556,
         'TH': 4.95295663,
@@ -20,6 +21,7 @@ MEANS = {'SI2017': [ 98.01336916, 106.46617234, 93.43728537],
 MEANS['TCD'] =  MEANS['TCDCopHRL'] # for backward compatibility
 
 STDS = {'SI2017': [54.22041366, 52.69225063, 46.55903685], 
+        'IMAGE2017': [54.22041366, 52.69225063, 46.55903685], 
         'ALTI' : 1434.79671951,
         'VHM': 7.52012624,
         'TH': 8.5075463,
@@ -33,6 +35,7 @@ I_NODATA_VAL = 255 #nodata value for integer arrays/rasters
 F_NODATA_VAL = -1 #nodata value for float arrays/rasters
 
 NODATA_VAL = {'SI2017': None,
+                'IMAGE2017': None,
                 'TLM3c' : None,
                 'TLM4c' : None,
                 'TLM5c' : None,
@@ -54,6 +57,7 @@ IGNORE_TARGET_VAL = {   'TH': None, #40,
 
 # operators to use to check nodata
 NODATA_CHECK_OPERATOR = {'SI2017': ['all', 'all'], # operators used to skip a training patch
+                        'IMAGE2017': ['all', 'all'],
                         'ALTI': ['all', 'all'],
                         'TLM3c': 'any',
                         'TLM4c': 'any',
@@ -64,10 +68,10 @@ NODATA_CHECK_OPERATOR = {'SI2017': ['all', 'all'], # operators used to skip a tr
 GET_OPERATOR = {'any': np.any, 'all': np.all}
 
 # relative resolution of the datasources
-RELATIVE_RESOLUTION = {'SI2017': 4, 'ALTI': 2, 'TLM3c': 1, 'TLM4c': 1, 'TLM5c': 1, 'VHM': 1, 'TH': 1,'TCD': 1}
+RELATIVE_RESOLUTION = {'IMAGE2017': 4, 'SI2017': 4, 'ALTI': 2, 'TLM3c': 1, 'TLM4c': 1, 'TLM5c': 1, 'VHM': 1, 'TH': 1,'TCD': 1}
 
 # number of channels
-CHANNELS = {'SI2017': 3, 'ALTI' : 1}
+CHANNELS = {'SI2017': 3, 'IMAGE2017': 3, 'ALTI' : 1}
 
 # class names
 CLASS_NAMES = {'PresenceOfForest' : ['NF', 'F'], 'TLM3c': ['NF', 'OF', 'CF'], 'TLM4c': ['NF', 'OF', 'CF', 'SF'], 
@@ -172,9 +176,7 @@ CLASS_FREQUENCIES = {
             'train': np.array([0.7332189312030076, 0.016322304135338337, 0.23018915789473723, 0.01841618496240605, 0.0018534218045112767]),
             'val' : np.array([0.6846235885328839, 0.018615264755480594, 0.27776981450252985, 0.017019370994940983, 0.001971961214165261]),
             'test' : np.array([0.7481924457652306, 0.015229600297176828, 0.22057757800891528, 0.014307291233283791, 0.0016930846953937583])
-                },/media/data/charrez/SwissIMAGE
-/media/data/charrez/SwissALTI3D
-/media/data/charrez/Labels
+                },
         'positives' : {
             'train': np.array([0.6044306120401334, 0.024205046822742493, 0.34131316610925294, 0.027303667781493884, 0.0027475072463768136]),
                     }
@@ -191,6 +193,7 @@ CLASS_FREQUENCIES = {
 # methods to extract the tile number from the filename
 default_tilenum_extractor = lambda x: os.path.splitext('_'.join(os.path.basename(x).split('_')[-2:]))[0]
 TILENUM_EXTRACTOR = {'SI2017': lambda x: '_'.join(os.path.basename(x).split('_')[2:4]),
+                    'IMAGE2017': lambda x: '_'.join(os.path.basename(x).split('_')[2:4]),
                     'ALTI': default_tilenum_extractor,
                     'TLM3c': default_tilenum_extractor,
                     'TLM4c': default_tilenum_extractor,

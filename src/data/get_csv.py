@@ -10,6 +10,7 @@ DIR = {'SI2017': '/home/tanguyen/Documents/Projects/2020/ForestMapping/Data/Swis
     'TLM4c': '/home/tanguyen/Documents/Projects/2020/ForestMapping/Data/TLMRaster/OF_F_SF',
     'TLM5c': '/home/tanguyen/Documents/Projects/2020/ForestMapping/Data/TLMRaster/5c',
     'ALTI': '/home/tanguyen/Documents/Projects/2020/ForestMapping/Data/SwissALTI3D',
+    'IMAGE2017': '/home/olivier/forest-mapping/SwissImage/2017',
     'VHM': '/home/tanguyen/Documents/Projects/2020/ForestMapping/Data/VHM_NFI',
     'TH': '/home/tanguyen/Documents/Projects/2020/ForestMapping/Data/TH_NFI',
     'VHM2': '/home/tanguyen/Documents/Projects/2020/ForestMapping/Data/VHM_NFI_bin_2m',
@@ -23,6 +24,7 @@ PREFIX = {'SI2017': 'DOP25_LV95',
     'TLM4c': 'TLM_OF_F_SF',
     'TLM5c': 'TLM5c',
     'ALTI' : 'SWISSALTI3D_0.5_TIFF_CHLV95_LN02',
+    'IMAGE2017': 'gray_DOP100_LV95_2549_1132',
     'VHM' : 'VHM_NFI',
     'TH' : 'TH_NFI',
     'VHM2' : 'VHM_NFI_bin_2m',
@@ -36,6 +38,7 @@ SUFFIX = {'SI2017': '_2017_1.tif',
     'TLM4c': '.tif',
     'TLM5c': '.tif',
     'ALTI' : '.tif',
+    'IMAGE2017': '_2017_1.tif',
     'VHM' : '.tif',
     'TH' : '.tif',
     'VHM2' : '.tif',
@@ -51,6 +54,7 @@ VAL_VIZ_ZONE = [ [(2568, 2572), (1095, 1101)],
 default_tilenum_extractor = lambda x: os.path.splitext('_'.join(os.path.basename(x).split('_')[-2:]))[0]
 TILENUM_EXTRACTOR = {'SI2017': lambda x: '_'.join(os.path.basename(x).split('_')[2:4]),
                     'ALTI': default_tilenum_extractor,
+                    'IMAGE2017': lambda x: '_'.join(os.path.basename(x).split('_')[2:4]),,
                     'TLM3c': default_tilenum_extractor,
                     'TLM4c': default_tilenum_extractor,
                     'TLM5c': default_tilenum_extractor,
@@ -219,7 +223,7 @@ if __name__ == "__main__":
     # get_filelist_csv(source, tilekeys_csv_fn, output_csv_fn, check_exist=False)
     
     
-    input_sources = ['SI2017', 'ALTI']
+    input_sources = ['IMAGE2017', 'ALTI']
     aux_target_sources = None #['TH', 'TCD1']
     target_source = None #'TLM5c'
     set = 'test'

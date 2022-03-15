@@ -15,8 +15,8 @@ from copy import copy, deepcopy
 
 def get_parser():
     parser = argparse.ArgumentParser(description='Launch model training')
-    parser.add_argument('--input_sources', type=str, nargs='*', default=['SI2017', 'ALTI'],
-            choices = ['SI2017', 'ALTI'], \
+    parser.add_argument('--input_sources', type=str, nargs='*', default=['IMAGE2017'],
+            choices = ['IMAGE2017'], \
             help='Source of inputs. Order matters.'\
                 'Example: --input_sources SI2017 ALTI')
     parser.add_argument('--target_source', type=str, default='TLM5c',
@@ -76,7 +76,7 @@ class DebugArgs():
     """Class for setting arguments directly in this python script instead of through a command line"""
     def __init__(self):
         self.debug = True
-        self.input_sources = ['SI2017', 'ALTI']
+        self.input_sources = ['SwissImage']
         self.target_source = 'TLM5c'
         self.aux_target_sources = ['TH', 'TCD1']
         self.use_subset = False
@@ -104,7 +104,7 @@ class DebugArgs():
         self.resume_training = True
         #self.output_dir = '/home/tanguyen/Documents/Projects/2020/ForestMapping/Code/ForestMapping/output/' + \
         #    'SI2017_ALTI_TLM_OF_F_SF_nns_0_10_10_10_sched_10_5_5_5'
-        self.output_dir = '/home/tanguyen/Documents/Projects/2020/ForestMapping/Code/ForestMapping/output/sb_hierarchical_MSElog1em1_MSE_doubling_negatives_eps_1em1'
+        self.output_dir = '/home/olivier/forest-mapping'
         self.no_user_input = True
 
 
