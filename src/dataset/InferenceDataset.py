@@ -1,6 +1,4 @@
-import os
 import numpy as np
-from psutil import boot_time
 import torch
 import rasterio
 import rasterio.merge
@@ -19,11 +17,10 @@ class InferenceDataset(Dataset):
     - Reads each tile with a margin around it
     - Supports multi-source input and target rasters with different depths and resolutions (pixel size for every source should be 
     a multiple of the smallest pixel size)
-    - Support several targets (main target + auxiliary targets)
     """
 
-    def __init__(self, input_vrt_fns, exp_utils, batch_size = 16, target_vrt_fn = None, aux_target_vrt_fn = None, 
-                 input_nodata_val = None, target_nodata_val = None, aux_target_nodata_val = None):
+    def __init__(self, input_vrt_fns, exp_utils, batch_size = 16, target_vrt_fn = None, 
+                 input_nodata_val = None, target_nodata_val = None):
         """
         Args:
             - image_fn (1-D ndarray of str): path to the files to sample inputs from (files from each input source 
@@ -49,21 +46,10 @@ class InferenceDataset(Dataset):
             self.sample_target = True
             self.target_vrt = rasterio.open(target_vrt_fn)
             self.target_fns = self.target_vrt.files[1:]
-        if aux_target_vrt_fn is None:
-            self.sample_aux_targets = False
-            self.aux_target_vrt = None
-            self.aux_target_fns = None
-        else:
-            self.sample_aux_targets = True
-            self.n_aux_targets = len(aux_target_vrt_fn)
-            self.aux_target_vrt = [rasterio.open(fn) for fn in aux_target_vrt_fn]
-            self.aux_target_fns = [vrt.files[1:] for vrt in self.aux_target_vrt]
 
         self.exp_utils = exp_utils
         self.input_scales = exp_utils.input_scales
         self.target_scale = exp_utils.target_scale
-        if self.sample_aux_targets:
-            self.aux_target_scales = exp_utils.aux_target_scales
         self.patch_size = exp_utils.patch_size 
         self.patch_stride = exp_utils.patch_stride 
         self.tile_margin = exp_utils.tile_margin
@@ -72,18 +58,6 @@ class InferenceDataset(Dataset):
         
         self.input_nodata_val = input_nodata_val
         self.target_nodata_val = target_nodata_val
-        self.aux_target_nodata_val = aux_target_nodata_val
-        
-        # read the data, define the patches
-        # self._get_image_data()
-        # if self.target_fn is not None:
-        #     self._get_target_data()
-        # self._get_input_nodata_mask()
-        # self._get_patch_coordinates()
-        
-        # self.current_tilenum = self.exp_utils.tilenum_extractor[0](self.input_fns[0][idx])
-        # self._get_input_nodata_mask()
-        # self._get_patch_coordinates()
 
     
     def _get_patch_coordinates(self, height, width): 
@@ -149,38 +123,6 @@ class InferenceDataset(Dataset):
             data = data.squeeze(0)
         else:
             data = np.moveaxis(data, (1, 2, 0), (0, 1, 2))
-        # if margins is None:
-        #     # remove the parts of margins that are filled with nodata
-        #     mask = vrt.read_masks(window = win)
-        #     mask = ~np.any(mask, axis=0)
-        #     if top_margin > 0:
-        #         nodata_rows = np.all(mask[:top_margin, left_margin:w-right_margin], axis = 1)
-        #         if np.any(nodata_rows):
-        #             # assume the nodata rows forms one block (at the top)
-        #             n_nodata_rows = np.sum(nodata_rows) 
-        #             data = data[:, n_nodata_rows:, :]
-        #             top_margin -= n_nodata_rows
-            
-        #     if bottom_margin > 0:
-        #         nodata_rows = np.all(mask[-bottom_margin:, left_margin:w-right_margin], axis = 1)
-        #         if np.any(nodata_rows):
-        #             n_nodata_rows = np.sum(nodata_rows)
-        #             data = data[:, :-n_nodata_rows, :]
-        #             bottom_margin -= n_nodata_rows
-                    
-        #     if left_margin > 0:
-        #         nodatacols = np.all(mask[top_margin:h-bottom_margin, :left_margin], axis = 0)
-        #         if np.any(nodatacols):
-        #             n_nodatacols = np.sum(nodatacols)
-        #             data = data[:, :, n_nodatacols:]
-        #             left_margin -= n_nodatacols
-                    
-        #     if right_margin > 0:
-        #         nodata_cols = np.all(mask[top_margin:h-bottom_margin, -right_margin:], axis = 0)
-        #         if np.any(nodata_cols):
-        #             n_nodata_cols = np.sum(nodata_cols)
-        #             data = data[:, :, :-n_nodata_cols]
-        #             right_margin -= n_nodata_cols
         return data, (h + top_margin + bottom_margin, w + left_margin + right_margin), \
                 (top_margin, left_margin, bottom_margin, right_margin)
                 
@@ -196,13 +138,10 @@ class InferenceDataset(Dataset):
             data_copy = torch.clone(data)
         for batch_num in range(num_batches):
             this_batch_size = remainder if (batch_num == num_batches - 1 and remainder > 0) else self.batch_size
-            # batch = torch.empty((this_batch_size, data.shape[0], self.patch_size*s, self.patch_size*s), 
-            #                             dtype = data.dtype)
             batch = torch.empty((this_batch_size, *shape), dtype = data.dtype)
             offset = self.batch_size * batch_num
             for patch_num in range(this_batch_size):
                 xp, yp = coords[offset + patch_num]
-                #batch[patch_num] = torch.clone(data[:, xp * s:(xp+self.patch_size) * s, yp * s:(yp+self.patch_size) * s])
                 batch[patch_num] = data_copy[xp * s:(xp+self.patch_size) * s, yp * s:(yp+self.patch_size) * s]
             if mult_channels:
                 batch = batch.movedim((0, 3, 1, 2), (0, 1, 2, 3))
@@ -261,26 +200,6 @@ class InferenceDataset(Dataset):
         else:
             target_data = None
         
-        if self.sample_aux_targets:
-            aux_target_data = [None] * self.n_aux_targets
-            for i in range(self.n_aux_targets):
-                s = self.aux_target_scales[i]
-                data, (aux_target_height, aux_target_width), margins = self._read_tile(self.aux_target_vrt[i], 
-                                                                self.aux_target_fns[i][idx], 
-                                                                max_margin=self.tile_margin*s)
-                # check the size of the image
-                height_i = aux_target_height // s
-                width_i = aux_target_width // s
-                margins_i = [m/s for m in margins]
-                if height_i != tile_height or width_i != tile_width or margins_i != tile_margins:
-                    raise RuntimeError('The dimensions of the sources do not match: '
-                                        '(height={}, width={}, margins={}) for the first input source '
-                                        'v.s (height={}, width={}, margins={}) for the {}th regression target source'
-                                        .format(tile_height, tile_width, ','.join(tile_margins),
-                                                height_i, width_i, ','.join(margins_i), i))
-                aux_target_data[i] = data
-        else:
-            aux_target_data = None
               
         #### build batches        
         input_nodata_mask = self._get_input_nodata_mask(image_data, tile_height, tile_width, tile_margins)
@@ -310,42 +229,13 @@ class InferenceDataset(Dataset):
             target_batches = None
             target_tile = None
             
-        # build auxiliary target batches
-        
-        if self.sample_aux_targets:
-            aux_target_batches = [None] * self.n_aux_targets
-            aux_target_tiles = [None] * self.n_aux_targets
-            for i in range(self.n_aux_targets):
-                aux_target_batches[i] = self._build_batch(self.exp_utils.preprocess_training_aux_targets[i](
-                                                                                            aux_target_data[i], 
-                                                                                            self.aux_target_nodata_val[i], 
-                                                                                            i),
-                                                          coords,  
-                                                          self.aux_target_scales[i], 
-                                                          num_batches, 
-                                                          remainder)
-                # auxiliary targets as full unprocessed tiles
-                top_margin, left_margin, bottom_margin, right_margin = \
-                    [int(m * self.aux_target_scales[i]) for m in tile_margins] 
-                aux_target_tiles[i] = self.exp_utils.preprocess_inference_aux_targets[i](
-                                                        aux_target_data[i][
-                                                                top_margin:aux_target_data[i].shape[-2]-bottom_margin, 
-                                                                left_margin:aux_target_data[i].shape[-1]-right_margin], 
-                                                        i)
-        else:
-            aux_target_batches = None
-            aux_target_tiles = None 
 
         #split the coordinates into chunks corresponding to the batches
         coords = [coords[i:min(i+self.batch_size, num_patches)] for i in range(0, num_patches, self.batch_size)]
-        
-        tile_margins = [int(m) for m in tile_margins]
 
-        return (input_batches, target_batches, aux_target_batches), \
-                (target_tile, aux_target_tiles), \
-                coords, (tile_height, tile_width), tile_margins, input_nodata_mask   
-                #coords, (tile_height, tile_width), margins, input_nodata_mask
-                   
+        return (input_batches, target_batches), \
+                target_tile, \
+                coords, (tile_height, tile_width), margins, input_nodata_mask   
 
     def __len__(self):
         return self.n_tiles
@@ -355,9 +245,6 @@ class InferenceDataset(Dataset):
             vrt.close()
         if self.target_vrt is not None:
             self.target_vrt.close()
-        if self.aux_target_vrt is not None:
-            for vrt in self.aux_target_vrt:
-                vrt.close()
 
     
 

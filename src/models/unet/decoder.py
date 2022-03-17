@@ -91,19 +91,7 @@ class UnetDecoder(nn.Module):
         # duplicate the upsample option if a single boolean has been provided
         if isinstance(upsample, bool):
             upsample = [upsample] * len(in_channels)
-
-        # if center:
-        #     self.center = CenterBlock(
-        #         head_channels, head_channels, use_batchnorm=use_batchnorm
-        #     )
-        # else:
-        #     self.center = nn.Identity()
-
-        # blocks = [
-        #     DecoderBlock(in_ch, skip_ch, out_ch, upsamp, use_batchnorm=use_batchnorm)
-        #     for in_ch, skip_ch, out_ch, upsamp in zip(in_channels, skip_channels, out_channels, upsample)
-        # ]
-        # self.blocks = nn.ModuleList(blocks)
+            
         self.blocks = nn.ModuleList(self._get_blocks(in_channels, skip_channels, out_channels, upsample, use_batchnorm))
 
     def _get_blocks(self, in_channels, skip_channels, out_channels, upsample, use_batchnorm):
@@ -127,41 +115,3 @@ class UnetDecoder(nn.Module):
             x = decoder_block(x, skip)
 
         return x
-
-class RuleUnetDecoder(UnetDecoder):
-    def __init__(
-            self,
-            encoder_channels,
-            decoder_channels,
-            upsample = True,
-            use_batchnorm=True
-    ):
-        super().__init__(encoder_channels,
-                        decoder_channels,
-                        upsample,
-                        use_batchnorm)
-
-    def _get_blocks(self, in_channels, skip_channels, out_channels, upsample, use_batchnorm):
-        blocks = [
-            DecoderBlock(in_ch, skip_ch, out_ch, upsamp, use_batchnorm=use_batchnorm)
-            for in_ch, skip_ch, out_ch, upsamp in zip(in_channels, skip_channels, out_channels, upsample)
-        ]
-        blocks.append(copy.deepcopy(blocks[-1]))
-        return blocks
-
-    def forward(self, *features):
-        features = features[::-1]  # reverse channels to start from head of encoder
-
-        x = features[0]
-        skips = (None,) + features[1:]
-
-        for i, decoder_block in enumerate(self.blocks[:-2]):
-            skip = skips[i] if i < len(skips) else None
-            x = decoder_block(x, skip)
-
-        # apply the two last blocks separately
-        skip = skips[i+1] if i <= len(skips) else None
-        y0 = self.blocks[-2](x, skip)
-        y1 = self.blocks[-1](x, skip)
-
-        return y0, y1

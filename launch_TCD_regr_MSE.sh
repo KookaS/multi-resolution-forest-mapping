@@ -3,7 +3,6 @@
 python src/train.py \
         --input_sources IMAGE2017 \
         --target_source TLM5c \
-        --aux_target_sources VHM TCD1 \
         --batch_size 16 \
         --num_epochs 5 \
         --lr 1e-5 \
@@ -16,9 +15,10 @@ python src/train.py \
         --penalize_residual \
         --regression_loss MSE \
         --num_workers 2 \
-        --resume_training \
-        --output_dir /home/tanguyen/Documents/Projects/2020/ForestMapping/Code/ForestMapping/output/TCD1_regr_only_MSE_full_ds \
-        > results/logMSE.txt #2>&1
+        --output_dir /home/olivier/forest-mapping/multi-resolution-forest-mapping/results
+        > logMSE.txt #2>&1
+        # --aux_target_sources VHM TCD1 \
+        # --resume_training \
         # --use_subset \
         # --aux_target_sources \
         # --debug \

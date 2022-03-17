@@ -1,1 +1,1 @@
-from .model import Unet, RuleUnet
+from .model import Unet

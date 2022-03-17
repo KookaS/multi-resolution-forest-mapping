@@ -5,12 +5,10 @@ Original code from: https://github.com/thienanhng/ForestMapping/blob/main/launch
 
 ## install
 
-    pip install psutil, rasterio
+    conda env create -f environment.yml
 
-    sudo add-apt-repository ppa:ubuntugis/ppa && sudo apt-get update
-    sudo apt-get update
-    sudo apt-get install gdal-bin
-    sudo apt-get install libgdal-dev
-    export CPLUS_INCLUDE_PATH=/usr/include/gdal
-    export C_INCLUDE_PATH=/usr/include/gdal
-    pip install GDAL
+or
+
+    conda create -n myenv python
+    conda install -n myenv gdal rasterio pandas torch torchvision tqdm 
+    conda activate myenv

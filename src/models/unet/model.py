@@ -1,20 +1,9 @@
 from typing import List
-from .decoder import UnetDecoder, RuleUnetDecoder
+from .decoder import UnetDecoder
 from ..encoders import ResNetEncoder
 from ..base import SegmentationModel
-from ..base import SegmentationHead, RuleSegmentationHead
-import torch.nn as nn
-from torch import Tensor
+from ..base import SegmentationHead
 import torch
-
-# constants for default arguments
-eps, C = 1e-3, 2
-PROB_ENCODING = torch.tensor([  [1.0 - 3*eps,   eps,            eps,            eps         ], 
-                                [eps,           1.0 - 3*eps,    eps,            eps         ], 
-                                [eps,           eps,            1.0 - 3*eps,    eps         ],
-                                [eps,           eps,            eps,            1.0 - 3*eps ]])
-ACT_ENCODING = torch.log(PROB_ENCODING) + C
-
 
 class Unet(SegmentationModel):
     """
@@ -90,56 +79,4 @@ class Unet(SegmentationModel):
         layers = [2] * (len(out_channels)-1)
         return layers, out_channels
 
-class RuleUnet(Unet): 
-    """
-        Unet model with a ResNet-18-like encoder. Has a main output corresponding to a segmentation task and auxiliary 
-        outputs corresponding to the regression of intermediate variables. Thresholds are applied to these variables to 
-        obtain class probabilities based on rules defined by the thresholds. A correction feature map is used to correct
-        these predictions and obtain the main output.
-    """
-    def __init__(
-        self,
-        encoder_depth: int = 4,
-        decoder_channels: List[int] = (256, 128, 64, 32, 16),
-        in_channels: int = 3,
-        classes: int = 4,
-        upsample: bool = False,
-        aux_in_channels: int = 0,
-        aux_in_position: int = 1,
-        aux_channels: int = 2, 
-        corr_channels: int = 4, 
-        thresholds: List[float] = [[0.5], [0.5]], 
-        # class_table: Tensor = torch.tensor([[[1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0]],
-        #                                     [[0.0, 0.0, 1.0, 0.0], [0.0, 0.0, 0.0, 1.0]]])
-        rules: Tensor = torch.tensor([[0, 1, 2, 3]]),
-        act_encoding : Tensor = ACT_ENCODING,
-        decision = 'f'
-        ):
-        """
-        Args:
-            - aux_channels: number of intermediate variables to predict
-            - corr_channels: number of correction channels (depends on the correction correction strategy. Should be 
-                2 * n_classes with the current implementation)
-            - thresholds (list of list of float/int): list of pre-defined thresholds for each auxiliary channel
-            - class_table (Tensor): pre-defined class probabilites for each position wrt the thresholds. Should have 
-                aux_channels dimensions
-            - other args: see mother class
-        """
-        super().__init__(encoder_depth = encoder_depth,
-                        decoder_channels = decoder_channels,
-                        in_channels = in_channels,
-                        classes = classes,
-                        upsample = upsample,
-                        aux_in_channels = aux_in_channels,
-                        aux_in_position = aux_in_position,
-                        aux_channels = aux_channels,
-                        corr_channels = corr_channels,
-                        thresholds = thresholds,
-                        rules = rules,
-                        act_encoding = act_encoding,
-                        decision = decision
-                        )
-
-    def _get_model_blocks(self):
-        return ResNetEncoder, RuleUnetDecoder, RuleSegmentationHead
     

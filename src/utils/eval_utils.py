@@ -1,42 +1,12 @@
 import numpy as np
-#from scipy.sparse import coo_matrix
 import torch
 from collections import OrderedDict as Dict
 
-# def my_confusion_matrix(y_true, y_pred, n_targets):
-#     """
-#     Adapted from sklearn.metrics.confusion_matrix,
-#     simplified for speed up.
-#     The confusion matrix is not normalized.
-
-#     Args:
-#         - y_true : 1-D ndarray of integers correponding to the ground truth 
-#         - y_pred : 1-D ndarray of integers containing the predictions
-#         - n_targets : number of classes. 
-
-#     Output:
-#         - cm (ndarray) : confusion matrix
-
-#     In y_true and y_pred, only integers n with 0 <= n < n_targets are considered. All other values
-#     are ignored.
-#     """
-
-#     # intersect y_pred, y_true with targets, eliminate items not in targets
-#     ind = np.logical_and(y_pred < n_targets, y_true < n_targets)
-#     y_pred = y_pred[ind]
-#     y_true = y_true[ind]
-
-#     sample_weight = np.ones(y_true.shape[0], dtype=np.int64)
-#     cm = coo_matrix((sample_weight, (y_true, y_pred)),
-#                     shape=(n_targets, n_targets), dtype=np.int64,
-#                     ).toarray()
-#     with np.errstate(all='ignore'):
-#         cm = np.nan_to_num(cm)
-
-#     return cm
-
 def my_confusion_matrix(y_true, y_pred, n_targets):
     """adapted from https://stackoverflow.com/questions/59080843/faster-method-of-computing-confusion-matrix"""
+    #N = max(max(y_true), max(y_pred)) + 1
+    # y_true = torch.clamp(torch.tensor(y_true, dtype=torch.long), 0, n_targets-1)
+    # y_pred = torch.clamp(torch.tensor(y_pred, dtype=torch.long), 0, n_targets-1)
     y_true = torch.tensor(y_true, dtype=torch.long).view(-1)
     y_pred = torch.tensor(y_pred, dtype=torch.long).view(-1)
     # treat values outside of [0, n_targets) as pixels to be ignored
@@ -134,16 +104,3 @@ def get_seg_error_map(pred, target, valid_mask, n_classes):
     error_map[valid_mask] = target[valid_mask] * n_classes + pred[valid_mask]
     error_map[target == pred] = 0
     return error_map
-
-def get_regr_error_map(pred, target, valid_mask):
-    error_map = np.zeros_like(target)
-    error_map[valid_mask] = pred[valid_mask] - target[valid_mask]
-    return error_map
-
-def get_regr_error(error_map, main_target, aux_target, nodata_val):
-    valid_mask = aux_target != nodata_val
-    pos_mask = (main_target > 0) * valid_mask
-    neg_mask = (main_target == 0) * valid_mask
-    pos_error, neg_error = np.sum(np.abs(error_map[pos_mask])), np.sum(np.abs(error_map[neg_mask]))
-    n_pos, n_neg = np.sum(pos_mask), np.sum(neg_mask)
-    return pos_error, neg_error, n_pos, n_neg

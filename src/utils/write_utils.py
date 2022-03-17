@@ -66,26 +66,3 @@ class Writer():
             output_fn = os.path.join(output_dir, '{}{}_{}.tif'.format(name_soft, suffix, self.tilenum))
             self._write_soft(output_soft, output_fn)
             
-    def save_regr_result(self, output_dir, output, name = 'regr_predictions', suffix = ''):
-        output_fn = os.path.join(output_dir, '{}{}_{}.tif'.format(name, suffix, self.tilenum))
-        self._write_soft(output, output_fn)
-
-    # def save_output(self, output_dir, save_hard, output_hard, save_soft = False, output_soft = None, suffix = None,
-    #                 colormap = None):
-    #     """
-    #     Saves predictions into files.
-
-    #     Args:
-    #         - output_dir (str): directory where the predictions must be stored
-    #         - save_hard (bool): whether to write hard predictions or not
-    #         - output_hard (2-D ndarray): hard predictions (height x width)
-    #         - save_soft (bool): whether to write soft predictions or not
-    #         - output_soft (3-D ndarray): soft predictions (n_classes x height x width)
-    #         - suffix (str): suffix to append to the filenames (before the extension). An underscore is automatically 
-    #             prepended to the suffix.
-    #     """
-    #     #suffix, template_fn, tilenum_extractor, template_scale = self._setup_template_fn(suffix)
-    #     suffix = '' if suffix is None  else '_' + suffix
-    #     self._save_seg_result(output_dir, save_hard, save_soft, output_hard, output_soft, 
-    #                     suffix = suffix, 
-    #                     colormap = colormap)

@@ -41,24 +41,6 @@ def truncate_training_file(in_fn, out_fn, trunc_epoch):
     keys.remove('args')
     for key in keys:
         d_out[key] = d[key][:trunc_epoch+1]
-    # for key in ['training_losses', 
-    #             'train_total_losses'
-    #              'proportion_negative_samples', 
-    #              'val_reports',
-    #              'val_epochs',
-    #              'model_checkpoints',
-    #              'optimizer_checkpoints',
-    #              ]:
-    #     d[key] = d[key][:trunc_epoch]
-    # try:
-    #     for key in ['val_regression_error',
-    #                 'val_pos_regression_error',
-    #                 'val_neg_regression_error',
-    #                 'training_binary_losses',
-    #                 'training_residual_penalties']:
-    #         d[key] = d[key][:trunc_epoch]
-    # except KeyError:
-    #     pass
 
     with open(out_fn, 'wb') as f:
         torch.save(d_out, f)

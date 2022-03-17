@@ -4,12 +4,11 @@ import matplotlib.pyplot as plt
 import matplotlib.colors as colors
 from sklearn.metrics import ConfusionMatrixDisplay
 from itertools import product
-from dataset.ExpUtils import STDS, THRESHOLDS
 
-REGR_COLORS = ['#0c2461', '#e58e26']#['yellowgreen', 'mediumseagreen']
+REGR_COLORS = ['#0c2461', '#e58e26']
 RED = '#eb2f06'
 
-def show_training_losses(fn, sb = False, hierarchical = False):
+def show_training_losses(fn, hierarchical = False):
     """
     Plots training losses/errors across training 
     epochs
@@ -23,9 +22,6 @@ def show_training_losses(fn, sb = False, hierarchical = False):
     total_color = 'dodgerblue'
     color = 'darkorange'
     bin_color = 'rebeccapurple'
-    if sb:
-        res_color = RED
-        regr_colors = REGR_COLORS
 
     # linestyles
     val_ls = ':'
@@ -40,7 +36,7 @@ def show_training_losses(fn, sb = False, hierarchical = False):
 
     # Plot losses
     plt.figure()
-    if hierarchical or sb:
+    if hierarchical:
         total_losses = d['train_total_losses']
         plt.plot(total_losses, train_ls+mk, label='total loss (training)', color=total_color, fillstyle = train_fs)
     losses = d['train_losses']
@@ -49,7 +45,7 @@ def show_training_losses(fn, sb = False, hierarchical = False):
         bin_losses = d['train_binary_losses']
         plt.plot(bin_losses, train_ls+mk, label='binary loss (training)', color=bin_color, fillstyle = train_fs)
     if not args['skip_validation']:
-        if hierarchical or sb:
+        if hierarchical:
             val_total_losses = d['val_total_losses']
             plt.plot(val_total_losses, val_ls+mk, label='total loss (validation)', color=total_color, fillstyle = val_fs)
         val_losses = d['val_losses']
@@ -67,55 +63,12 @@ def show_training_losses(fn, sb = False, hierarchical = False):
     plt.grid(b = True, which = 'minor', alpha = 0.4)
     plt.ylim(ymin=-0.05)
     plt.show()
-
-    if sb:
-        plt.figure()
-        aux_target_names = d['args']['aux_variables']
-        regr_losses = list(zip(*d['train_regression_losses']))
-        for i in range(len(regr_losses)):
-            plt.plot(regr_losses[i], train_ls+mk, label='{} loss (training)'.format(aux_target_names[i]), color=regr_colors[i], fillstyle = train_fs)
-        res_penalties = d['train_residual_penalties']
-        plt.plot(res_penalties, train_ls+mk, label='residual penalty (training)', color=res_color, fillstyle = train_fs)
-        if not args['skip_validation']:
-            val_regr_losses = list(zip(*d['val_regression_losses']))
-            for i in range(len(val_regr_losses)):
-                plt.plot(val_regr_losses[i], val_ls+mk, label='{} loss (validation)'.format(aux_target_names[i]), color=regr_colors[i], fillstyle = val_fs)
-            val_res_penalties = d['val_residual_penalties']
-            plt.plot(val_res_penalties, val_ls+mk, label='residual penalty (validation)', color=res_color, fillstyle = val_fs)
-
-        plt.xlabel('epoch')
-        plt.xticks(range(0,len(losses),5))
-        plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
-        plt.minorticks_on()
-        plt.grid(b = True, which = 'major')
-        plt.grid(b = True, which = 'minor', alpha = 0.4)
-        plt.ylim(ymin=-0.05)
-        plt.show()
-
-        pos_mk = '^'
-        neg_mk = 'v'
-        plt.figure()
-        val_regr_error = list(zip(*d['val_regression_error']))
-        val_pos_regr_error = list(zip(*d['val_pos_regression_error']))
-        val_neg_regr_error = list(zip(*d['val_neg_regression_error']))
-        for i in range(len(regr_losses)):
-            plt.plot(val_regr_error[i], '--'+mk, label='{} error (validation)'.format(aux_target_names[i]), color=regr_colors[i], fillstyle = 'full')
-            plt.plot(val_pos_regr_error[i], val_ls+pos_mk, label='{} error (validation, forest)'.format(aux_target_names[i]), color=regr_colors[i], fillstyle = val_fs)
-            plt.plot(val_neg_regr_error[i], val_ls+neg_mk, label='{} error (validation, non-forest)'.format(aux_target_names[i]), color=regr_colors[i], fillstyle = val_fs)
-        plt.xlabel('epoch')
-        plt.xticks(range(0,len(losses),5))
-        plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
-        plt.minorticks_on()
-        plt.grid(b = True, which = 'major')
-        plt.grid(b = True, which = 'minor', alpha = 0.4)
-        plt.ylim(ymin=-0.05)
-        plt.show()
         
 def dict_zip(*dicts):
     all_keys = {k for d in dicts for k in d.keys()}
     return {k: [d[k] for d in dicts if k in d] for k in all_keys}
         
-def show_detailed_training_results(fn, sb = False):
+def show_detailed_training_results(fn):
     """
     Plots class-specific validation mean/overall metrics stored in dictionary fn across training 
     epochs
@@ -205,34 +158,6 @@ def show_detailed_training_results(fn, sb = False):
         plt.grid(b = True, which = 'minor', alpha = 0.4)
         plt.ylim(ymin=0, ymax=1)
         plt.show()
-    if sb:
-        regr_colors = ['yellowgreen', 'mediumseagreen']
-        aux_target_names = d['args']['aux_variables']
-        val_regr_error = list(zip(*d['val_regression_error']))
-        val_pos_regr_error = list(zip(*d['val_pos_regression_error']))
-        val_neg_regr_error = list(zip(*d['val_neg_regression_error']))
-        # Plot regression losses in a different figure, TEMPORARY (2 variables)
-        fig, ax1 = plt.subplots()
-        color = regr_colors[0]
-        ax1.set_xlabel('epoch')
-        ax1.set_ylabel('{} regression error'.format(aux_target_names[0]), color=color)
-        ax1.plot(val_epochs, val_regr_error[0], color=color, label = 'all')
-        ax1.plot(val_epochs, val_pos_regr_error[0], ':', color=color, label = 'forest')
-        ax1.plot(val_epochs, val_neg_regr_error[0], '--', color=color, label = 'non-forest')
-        ax1.tick_params(axis='y', labelcolor=color)
-        ax1.plot(val_epochs, val_regr_error[0], color=color)
-
-        ax2 = ax1.twinx() 
-        color = regr_colors[1]
-        ax2.set_ylabel('{} regression error'.format(aux_target_names[1]), color=color) 
-        ax2.plot(val_epochs, val_regr_error[1], color=color, label = 'all')
-        ax2.plot(val_epochs, val_pos_regr_error[1], ':', color=color, label = 'forest')
-        ax2.plot(val_epochs, val_neg_regr_error[1], '--', color=color, label = 'non-forest')
-        ax2.tick_params(axis='y', labelcolor=color)
-        fig.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
-        fig.tight_layout()  # otherwise the right y-label is slightly clipped
-        plt.ylim(ymin=0)
-        plt.show()
 
 def print_report(report, digits=2):
     """
@@ -256,16 +181,15 @@ def print_report(report, digits=2):
     print(report_str)
 
 
-def display_norm_cm(cm, class_names = ['NF', 'OF', 'CF'], figsize=(12,3), xlabel="Predicted label", ylabel="Target label"):
+def display_cm(cm, class_names = ['NF', 'OF', 'CF']):
     """
     Prints a confusion matrix with 3 different normalizations
         - across columns (precision)
         - across rows (recall)
         - across both axis 
     """
-    values_format = '.1f'
     cm = cm.astype(np.float32)
-    _, (ax1, ax2, ax3) = plt.subplots(1,3, figsize=figsize)
+    _, (ax1, ax2, ax3) = plt.subplots(1,3, figsize=(12,3))
     #plt.suptitle('Validation results')
     ax1.set_title('Precision (%)')
     ax2.set_title('Recall (%)')
@@ -275,27 +199,22 @@ def display_norm_cm(cm, class_names = ['NF', 'OF', 'CF'], figsize=(12,3), xlabel
     count[count == 0] = np.nan
     precision_cm = cm / count * 100
     # cm_disp_0 = ConfusionMatrixDisplay(confusion_matrix=(), display_labels=class_names)
-    plot_cm(precision_cm, class_names, values_format=values_format, ax=ax1, xlabel=xlabel, ylabel=ylabel)
+    plot_cm(precision_cm, class_names, values_format ='.1f', ax=ax1, xticks_rotation = 'vertical')
     # Recall
     count = cm.sum(axis=1, keepdims=True)
     count[count == 0] = np.nan
     recall_cm = cm / count * 100
     # cm_disp_1 = ConfusionMatrixDisplay(confusion_matrix=(), display_labels=class_names)
-    plot_cm(recall_cm, class_names, values_format=values_format, ax=ax2, xlabel=xlabel, ylabel=ylabel)
+    plot_cm(recall_cm, class_names, values_format ='.1f', ax=ax2, xticks_rotation = 'vertical')
     # Fully normalized
     count = cm.sum(keepdims=True)
     count[count == 0] = np.nan
     norm_cm = cm / count * 100
     # cm_disp_2 = ConfusionMatrixDisplay(confusion_matrix=(), display_labels=class_names)
-    plot_cm(norm_cm, class_names, values_format=values_format, ax=ax3, xlabel=xlabel, ylabel=ylabel)
-    
-def display_count_cm(cm, class_names = ['NF', 'OF', 'CF'], figsize=(3,2.5), xlabel="Predicted label", ylabel="Target label"):
-    fig = plt.figure(figsize=figsize)
-    ax = fig.add_subplot(111)
-    plot_cm(cm, class_names, values_format='.0f', ax=ax, xlabel=xlabel, ylabel=ylabel)
+    plot_cm(norm_cm, class_names, values_format ='.1f', ax=ax3, xticks_rotation = 'vertical')
 
-def plot_cm(cm, class_names, include_values=True, cmap="Blues", values_format='.1f', ax=None, 
-            xticks_rotation='vertical', colorbar=False, xlabel="Predicted label", ylabel="Target label"):
+def plot_cm(cm, class_names, include_values=True, cmap="Blues", values_format = '.1f', ax = None, 
+            xticks_rotation = 'vertical', colorbar=False):
     """
     Adapted from sklearn.metrics.ConfusionMatrixDisplay.plot(), to obtain a fix colormap range
     """
@@ -345,16 +264,15 @@ def plot_cm(cm, class_names, include_values=True, cmap="Blues", values_format='.
         yticks=np.arange(n_classes),
         xticklabels=display_labels,
         yticklabels=display_labels,
-        ylabel=ylabel,
-        xlabel=xlabel,
+        ylabel="True label",
+        xlabel="Predicted label",
     )
 
     ax.set_ylim((n_classes - 0.5, -0.5))
     plt.setp(ax.get_xticklabels(), rotation=xticks_rotation)
 
 
-def show_model_metrics(fn, epoch=-1, class_names = None, sb = False, s = 0.1, scale = [['log', 'linear'], ['linear']],
-                            val_max = [[60, 5], [100]], show_scatter = True, show_2Dhist = False, show_table = True, show_cm = True):
+def show_model_metrics(fn, epoch=-1, class_names = None, show_table = True, show_cm = True):
     """
     Prints validation metrics + confusion matrices of the model for a given epoch
     Setting epoch to None indicates that the file contains metrics for one given epoch (as opposed to consecutive 
@@ -362,68 +280,6 @@ def show_model_metrics(fn, epoch=-1, class_names = None, sb = False, s = 0.1, sc
     """
 
     d = torch.load(fn, map_location='cpu')
-    if sb:
-        figsize = (5, 5)
-        aux_target_names = d['args']['aux_variables']
-        regr_pred_pts = d['val_regression_prediction_points']
-        regr_target_pts = d['val_regression_target_points']
-        
-        if epoch is not None:
-            regr_pred_pts = regr_pred_pts[epoch]
-            regr_target_pts = regr_target_pts[epoch]
-        if show_2Dhist:
-            edges = [[0, 1, 3, 5, 10, 20, 60], np.arange(0, 101, 10)]
-            lim = [[1e-1, 60], [0, 100]]
-            for i in range(len(aux_target_names)):
-                if len(regr_pred_pts[i]) > 0:
-                    for scl in scale[i]:
-                        plt.figure(figsize=figsize)
-                        # plt.hist2d(regr_target_pts[i], regr_pred_pts[i], [edges[i]]*2)
-                        # plt.xscale(scale[i])
-                        # plt.yscale(scale[i])
-                        counts, _, _ = np.histogram2d(regr_target_pts[i], regr_pred_pts[i], bins=(edges[i], edges[i]))
-                        plt.pcolormesh(edges[i], edges[i], counts.T, norm=colors.LogNorm(vmin=1, vmax=counts.max()))
-                        plt.colorbar()
-                        plt.xscale(scl)
-                        plt.yscale(scl)
-                        plt.xlim(xmin=lim[i][0], xmax=lim[i][1])
-                        plt.ylim(ymin=lim[i][0], ymax=lim[i][1])
-                        plt.xlabel('Target')
-                        plt.ylabel('Prediction')
-                        plt.title('{}'.format(aux_target_names[i]))
-                        plt.tight_layout()
-                        plt.show()
-    # Scatter plot for regression tasks
-        if show_scatter:
-            for i in range(len(aux_target_names)):
-                if len(regr_pred_pts[i]) > 0:
-                    print('Plotting {} points'.format(len(regr_pred_pts[i])))
-                    for scl, ymax in zip(scale[i], val_max[i]):
-                        
-                        if ymax is None:
-                            ymax = np.max(np.concatenate(regr_target_pts[i], regr_pred_pts[i]))
-                        mask = (regr_target_pts[i] <= ymax) * (regr_pred_pts[i] <= ymax)
-                        print(aux_target_names[i])
-                        plt.figure(figsize=figsize)
-                        plt.scatter(regr_target_pts[i][mask], regr_pred_pts[i][mask], s=s, c=REGR_COLORS[i], alpha=0.02)#, label="model predictions")
-                        id = np.linspace(0, ymax, num=1000)
-                        plt.plot(id, id, color='k', label="1:1 line")
-                        try:
-                            thresholds = d['thresholds'][i]
-                        except KeyError:
-                            thresholds = THRESHOLDS[aux_target_names[i]]
-                        plt.vlines(thresholds, ymin=0, ymax=ymax, colors=[RED]*len(thresholds), linestyle='dashed', label="rule thresholds")
-                        plt.hlines(thresholds, xmin=0, xmax=ymax, colors=[RED]*len(thresholds), linestyle='dashed')#, label="thresholds")
-                        plt.xlabel('Target')
-                        plt.ylabel('Prediction')
-                        plt.xscale(scl)
-                        plt.yscale(scl)
-                        #plt.title('{}'.format(aux_target_names[i]))
-                        plt.grid(b=True, which='major')
-                        plt.grid(b=True, which='minor', alpha=0.4)
-                        plt.legend(bbox_to_anchor=(0.5, 1.1), loc='center')
-                        plt.tight_layout()
-                        plt.show()
 
     # Print validation metrics (as a table)
     if show_table or show_cm:
@@ -459,9 +315,9 @@ def show_model_metrics(fn, epoch=-1, class_names = None, sb = False, s = 0.1, sc
                         class_names = list(report[i].keys())[:-2]
                     else:
                         class_names = list(report.keys())[:-2]
-                display_norm_cm(m, class_names)
+                display_cm(m, class_names)
         else:
-            display_norm_cm(cm, class_names)
+            display_cm(cm, class_names)
 
 
 def get_main_metrics(fn, idx = 0):

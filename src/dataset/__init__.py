@@ -1,3 +1,3 @@
 from .ExpUtils import ExpUtils
-from .StreamTrainingDataset import StreamSingleOutputTrainingDataset, StreamMultiOutputTrainingDataset
+from .StreamTrainingDataset import StreamSingleOutputTrainingDataset
 from .InferenceDataset import InferenceDataset

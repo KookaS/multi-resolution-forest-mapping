@@ -85,14 +85,14 @@ def get_target_statistics(fn_list, p_pix, n_classes, non_empty_only = False):
 
 if __name__ == "__main__":
     
-    # source = 'TH'
-    # train_fn_list_fn = os.path.join('data', 'csv', source + '_train.csv')
-    # val_fn_list_fn = os.path.join('data', 'csv', source + '_val.csv')
-    # train_fn_list = get_fn_list(train_fn_list_fn)
-    # val_fn_list = get_fn_list(val_fn_list_fn)
-    # p_pix = 1e-5 # proportion of pixels used per image
-    # get_image_statistics(train_fn_list + val_fn_list, p_pix)
+    source = 'TH'
+    train_fn_list_fn = os.path.join('data', 'csv', source + '_train.csv')
+    val_fn_list_fn = os.path.join('data', 'csv', source + '_val.csv')
+    train_fn_list = get_fn_list(train_fn_list_fn)
+    val_fn_list = get_fn_list(val_fn_list_fn)
+    p_pix = 1e-5 # proportion of pixels used per image
+    get_image_statistics(train_fn_list + val_fn_list, p_pix)
     
     ### target statistics
-    fn_list = get_fn_list('data/csv/TLM5c_test.csv')
-    get_target_statistics(fn_list, p_pix = 1, n_classes = 5, non_empty_only=False)
+    # fn_list = get_fn_list('data/TLM5c_train.csv')
+    # get_target_statistics(fn_list, p_pix = 1, n_classes = 5, non_empty_only=False)
