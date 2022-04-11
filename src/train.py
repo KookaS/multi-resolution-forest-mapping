@@ -8,6 +8,7 @@ import torch.nn as nn
 import torch.optim as optim
 from dataset import ExpUtils, StreamSingleOutputTrainingDataset
 from models import Unet
+from models.encoders import ResNetEncoder
 import utils
 import psutil
 from copy import copy, deepcopy
@@ -57,6 +58,7 @@ def get_parser():
     parser.add_argument('--use_subset', action='store_true')
     parser.add_argument('--decision', type=str, default='f', choices=['f', 'h']) # f for flat, h for hierarchical
     parser.add_argument('--lambda_bin', type=float, default=1.0)
+    parser.add_argument('--lambda_feature', type=float, default=0.1)
     return parser
 
 
@@ -77,13 +79,14 @@ class DebugArgs():
         self.weight_bin_segmentation = False
         self.decision = 'h' # no arg checking and parser yet
         self.lambda_bin = 1.0 # no arg checking and parser yet
+        self.lambda_feature = 1.0 # no arg checking and parser yet
         self.adapt_loss_weights = False
 
         self.num_workers = 2
         self.skip_validation = False
         self.undersample_validation = 1
         self.resume_training = False
-        self.output_dir = '/home/tanguyen/Documents/Projects/2020/ForestMapping/Code/ForestMapping/output/baseline_hierarchical'
+        self.output_dir = '/media/data/charrez/multi-resolution-forest-mapping/results'
         self.no_user_input = True
 
 
@@ -179,13 +182,15 @@ def train(args):
                 except KeyError:
                     pass
         # check the keys
-        keys = ['train_losses', 'train_total_losses', 'proportion_negative_samples', 'model_checkpoints', 'optimizer_checkpoints']
+        keys = ['train_losses', 'train_losses_sim', 'train_losses_feature', 'train_total_losses', 'proportion_negative_samples', 'model_checkpoints', 'optimizer_checkpoints']
         if args.decision == 'h':
             keys.append('train_binary_losses')
+            keys.append('train_binary_losses_sim')
         if not args.skip_validation:
-            keys.extend(('val_reports', 'val_cms', 'val_epochs', 'val_losses', 'val_total_losses'))
+            keys.extend(('val_reports', 'val_cms', 'val_epochs', 'val_losses', 'val_losses_sim', 'val_losses_feature', 'val_total_losses'))
             if args.decision == 'h':
                 keys.append('val_binary_losses')
+                keys.append('val_binary_losses_sim')
         keys_not_found = list(k not in save_dict.keys() for k in keys)
         if any(keys_not_found):
             raise KeyError('Did not find ({}) entry(ies) in {}'.format(
@@ -203,8 +208,8 @@ def train(args):
     ############ Setup data ###################################################
     prefix = "_".join(args.input_sources + [args.target_source])
     suffix = "_subset" if args.use_subset else ""
-    train_csv_fn = 'data/csv/{}_train{}_with_counts.csv'.format(prefix, suffix)
-    val_csv_fn = 'data/csv/{}_val{}.csv'.format(prefix, suffix)
+    train_csv_fn = 'src/data/csv/{}_train{}_with_counts.csv'.format(prefix, suffix)
+    val_csv_fn = 'src/data/csv/{}_val{}.csv'.format(prefix, suffix)
 
     if n_input_sources == 1:
         input_col_names = ['input']
@@ -229,7 +234,7 @@ def train(args):
             raise RuntimeError('Could not read target counts in {}, which are necessary '
                                 'for undersampling the training set'.format(train_csv_fn))
         negatives_mask = ~np.any(positive_counts, axis = 0)
-    else: 
+    else:
         negatives_mask = None
 
     # for debugging: use subset of training set
@@ -241,6 +246,7 @@ def train(args):
         if negatives_mask is not None:
             negatives_mask = negatives_mask[:n_samples]
     
+    # TODO [:50] for input_fns, target_fns, negatives_mask
     dataset = StreamSingleOutputTrainingDataset(
     input_fns=input_fns, 
     target_fns=target_fns, 
@@ -324,14 +330,15 @@ def train(args):
 
     model = Unet(encoder_depth=4, 
                 decoder_channels=decoder_channels,
-                in_channels=exp_utils.input_channels[0], 
+                in_channels=exp_utils.input_channels[0],
                 classes=exp_utils.output_channels,
                 upsample=upsample,
                 aux_in_channels=aux_in_channels,
                 aux_in_position=aux_in_position)
 
-
     model = model.to(device)
+    # encoder = encoder.to(device)
+    # encoder_sim = encoder_sim.to(device)
 
     optimizer = optim.AdamW(model.parameters(), lr=args.lr[0], amsgrad=True)
     print('Initial learning rate: {}'.format(optimizer.param_groups[0]['lr']))
@@ -360,6 +367,8 @@ def train(args):
         save_dict = {
                 'args': args_dict,
                 'train_losses': [],
+                'train_losses_sim': [],
+                'train_losses_feature': [],
                 'train_total_losses': [],
                 'model_checkpoints': [],
                 'optimizer_checkpoints' : [],
@@ -367,14 +376,18 @@ def train(args):
             }
         if args.decision == 'h':
             save_dict['train_binary_losses'] = []
+            save_dict['train_binary_losses_sim'] = []
         if not args.skip_validation:
             save_dict['val_reports'] = []
             save_dict['val_cms'] = []
             save_dict['val_epochs'] = []
             save_dict['val_losses'] = []
+            save_dict['val_losses_sim'] = []
+            save_dict['val_losses_feature'] = []
             save_dict['val_total_losses'] = []
             if args.decision == 'h':
                 save_dict['val_binary_losses'] = []
+                save_dict['val_binary_losses_sim'] = []
         
 
         starting_epoch = 0
@@ -427,7 +440,8 @@ def train(args):
                 n_batches = n_batches_per_epoch,
                 seg_criterion = seg_criterion,
                 seg_criterion_2 = seg_criterion_2,
-                lambda_bin = args.lambda_bin
+                lambda_bin = args.lambda_bin,
+                lambda_feature = args.lambda_feature
             )
 
         # debug
@@ -441,12 +455,14 @@ def train(args):
             print('Validation')
             results = inference.infer(seg_criterion, 
                                         seg_criterion_2)
-            cm, report, val_losses = results
+            cm, report, losses = results
+            val_losses, val_losses_sim, val_loss_feature = losses
             # collect individual validation losses and compute total validation loss
             val_loss, val_loss_2, *other_losses = val_losses
-            val_total_loss = val_loss
+            val_loss_sim, val_loss_2_sim, *other_losses_sim = val_losses_sim
+            val_total_loss = val_loss + val_loss_sim + args.lambda_feature * val_loss_feature
             if args.decision == 'h':
-                val_total_loss += args.lambda_bin * val_loss_2
+                val_total_loss += args.lambda_bin * val_loss_2 + args.lambda_bin * val_loss_2_sim
     
         # debug
         new_mem = psutil.virtual_memory().used/1e6
@@ -463,14 +479,19 @@ def train(args):
         save_dict['args']['num_epochs'] = epoch + 1 # number of epochs already computed
 
         # store training losses
-        training_loss, training_binary_loss = training_loss
-        training_total_loss = training_loss
+        loss, loss_sim, training_loss_feature = training_loss
+        training_loss, training_binary_loss = loss
+        training_loss_sim, training_binary_loss_sim = loss_sim
+        training_total_loss = training_loss + training_loss_sim + args.lambda_feature*training_loss_feature
         if args.decision == 'h':
-                training_total_loss += args.lambda_bin * training_binary_loss
+                training_total_loss += args.lambda_bin * training_binary_loss + args.lambda_bin * training_binary_loss_sim
         save_dict['train_total_losses'].append(training_total_loss)        
         save_dict['train_losses'].append(training_loss)
+        save_dict['train_losses_sim'].append(training_loss_sim)
+        save_dict['train_losses_feature'].append(training_loss_feature)
         if args.decision == 'h':
             save_dict['train_binary_losses'].append(training_binary_loss)
+            save_dict['train_binary_losses_sim'].append(training_binary_loss_sim)
         
         # store validation losses/metrics
         if not args.skip_validation: 
@@ -479,8 +500,11 @@ def train(args):
             save_dict['val_epochs'].append(epoch)
             save_dict['val_total_losses'].append(val_total_loss)
             save_dict['val_losses'].append(val_loss)
+            save_dict['val_losses_sim'].append(val_loss_sim)
+            save_dict['val_losses_feature'].append(val_loss_feature)
             if args.decision == 'h':
                 save_dict['val_binary_losses'].append(val_loss_2)
+                save_dict['val_binary_losses_sim'].append(val_loss_2_sim)
                 
         with open(log_fn, 'wb') as f:
             torch.save(save_dict, f)

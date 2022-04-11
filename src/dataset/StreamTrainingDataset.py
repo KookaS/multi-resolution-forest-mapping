@@ -4,6 +4,7 @@ from torch.utils.data.dataset import IterableDataset
 import rasterio
 from rasterio.errors import RasterioError, RasterioIOError
 from math import ceil
+import cv2
 
 class StreamSingleOutputTrainingDataset(IterableDataset):
     """
@@ -145,6 +146,8 @@ class StreamSingleOutputTrainingDataset(IterableDataset):
         """
 
         input_data, target_data = data
+        # print('input_data: ', len(input_data))
+        # print('target_data: ', len(target_data))
         # find the coarsest data source
         height, width = target_data.shape[:2] 
         height = height // self.exp_utils.target_scale
@@ -205,6 +208,12 @@ class StreamSingleOutputTrainingDataset(IterableDataset):
             for i, fp in enumerate(img_fp):  
                 img_data[i] = np.moveaxis(fp.read(), (1, 2, 0), (0, 1, 2))
             target_data = target_fp.read(1)
+
+            # img_sim = img_data.copy()
+            # for i, fp in enumerate(img_fp):  
+            #     if (img_sim[i].shape == (4000, 4000, 3)):
+            #         img_sim[i] = self._generate_simulated_image(img=img_sim[i])
+            #         print(img_sim[i].shape, img_data[i].shape)
         except RasterioError as e:
             print("WARNING: Error reading file, skipping to the next file")
             return None
@@ -230,9 +239,15 @@ class StreamSingleOutputTrainingDataset(IterableDataset):
             if code == 1: #IndexError or invalid patch
                 continue #continue to next patch
             yield data_patch
+            # data_patch_sim, num_skipped_patches_sim, code, _ = self._generate_patch(data_sim, num_skipped_patches, None)
+            # if code == 1: #IndexError or invalid patch
+            #     continue #continue to next patch
+            # yield data_patch_sim
 
         if num_skipped_patches>0 and self.verbose:
             print("We skipped %d patches on %s" % (num_skipped_patches, fns[0]))
+        # if num_skipped_patches_sim>0 and self.verbose:
+        #     print("We skipped %d sim patches on %s" % (num_skipped_patches_sim, fns[0]))
 
     def _stream_patches(self):
         """Generator returning patches from the samples the worker calling this function is assigned to"""
@@ -244,4 +259,11 @@ class StreamSingleOutputTrainingDataset(IterableDataset):
         if self.verbose:
             print("Creating a new StreamTrainingDataset iterator")
         return iter(self._stream_patches())
+
+    def _generate_simulated_image(self, img: np.array, resolution_original: float = 0.25, resolution_simulated: float = 1.0):
+        x,y,ch = img.shape # (x, y, rgb)
+        x,y,ch = (int(x * resolution_original / resolution_simulated), int(y * resolution_original / resolution_simulated), ch)
+        res = cv2.resize(img, dsize=(x, y), interpolation=cv2.INTER_CUBIC)
+        gray = cv2.cvtColor(res, cv2.COLOR_BGR2GRAY)
+        return gray.reshape(x,y,1)
    

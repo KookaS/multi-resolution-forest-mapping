@@ -19,6 +19,7 @@ class Unet(SegmentationModel):
         upsample: bool = False,
         aux_in_channels: int = 0,
         aux_in_position: int = 1,
+        encoder_inputs =[64, 65, 128, 256, 512],
         **kwargs
     ):
         """
@@ -44,14 +45,20 @@ class Unet(SegmentationModel):
         super().__init__()
         layers, out_channels = self.set_channels(aux_in_channels, aux_in_position, encoder_depth)
         encoder, decoder, segmentation_head = self._get_model_blocks()
-        self.encoder = encoder(in_channels = in_channels,
+        self.encoder = encoder(in_channels_high_res = in_channels,
                         aux_in_channels = aux_in_channels,
                         out_channels = out_channels,
                         layers = layers,
                         aux_in_position = aux_in_position)
 
+        self.encoder_sim = encoder(in_channels_high_res = in_channels,
+                        aux_in_channels = None,
+                        out_channels = out_channels,
+                        layers = layers,
+                        aux_in_position = 0)
+
         self.decoder = decoder(
-            encoder_channels=self.encoder.out_channels,
+            encoder_channels=self.encoder._out_channels,
             decoder_channels=decoder_channels,
             upsample = upsample,
             use_batchnorm=True

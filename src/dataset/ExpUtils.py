@@ -16,7 +16,6 @@ I_NODATA_VAL = 255 #nodata value for integer arrays/rasters
 F_NODATA_VAL = -1 #nodata value for float arrays/rasters
 
 NODATA_VAL = {'SI2017': None,
-                'IMAGE2017': None,
                 'TLM4c' : None,
                 'TLM5c' : None,
                 'ALTI' : None,
@@ -26,7 +25,6 @@ NODATA_VAL = {'SI2017': None,
 
 # operators to use to check nodata
 NODATA_CHECK_OPERATOR = {'SI2017': ['all', 'all'], # operators used to skip a training patch
-                        'IMAGE2017': ['all', 'all'], # operators used to skip a training patch
                         'ALTI': ['all', 'all'],
                         'TLM4c': 'any',
                         'TLM5c': 'any'
@@ -34,10 +32,10 @@ NODATA_CHECK_OPERATOR = {'SI2017': ['all', 'all'], # operators used to skip a tr
 GET_OPERATOR = {'any': np.any, 'all': np.all}
 
 # relative resolution of the datasources
-RELATIVE_RESOLUTION = {'SI2017': 4, 'IMAGE2017': 4, 'ALTI': 2, 'TLM4c': 1, 'TLM5c': 1}
+RELATIVE_RESOLUTION = {'SI2017': 4, 'ALTI': 2, 'TLM4c': 1, 'TLM5c': 1}
 
 # number of channels
-CHANNELS = {'SI2017': 3, 'IMAGE2017': 3, 'ALTI' : 1}
+CHANNELS = {'SI2017': 3, 'ALTI' : 1}
 
 # class names
 CLASS_NAMES = {'PresenceOfForest' : ['NF', 'F'], 'TLM4c': ['NF', 'OF', 'CF', 'SF'], 
@@ -127,7 +125,6 @@ CLASS_FREQUENCIES = {
 # methods to extract the tile number from the filename
 default_tilenum_extractor = lambda x: os.path.splitext('_'.join(os.path.basename(x).split('_')[-2:]))[0]
 TILENUM_EXTRACTOR = {'SI2017': lambda x: '_'.join(os.path.basename(x).split('_')[2:4]),
-                    'IMAGE2017': lambda x: '_'.join(os.path.basename(x).split('_')[2:4]),
                     'ALTI': default_tilenum_extractor,
                     'TLM4c': default_tilenum_extractor,
                     'TLM5c': default_tilenum_extractor}
@@ -391,11 +388,3 @@ class ExpUtils:
     def get_inference_kernel(self):
         kernel = self.create_kernel(self.target_scale)
         return kernel
-
-    
-
-
-
-
-  
-        

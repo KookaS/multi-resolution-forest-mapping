@@ -13,7 +13,8 @@ class ResNetEncoder(nn.Module):
     def __init__(
         self,
         block: Type[Union[BasicBlock, Bottleneck]] = BasicBlock,
-        in_channels: int = 3,
+        in_channels_high_res: int = 3,
+        in_channels_low_res: int = 1,
         out_channels: List[int] = [64, 64, 128, 256, 512], #first element is the output of the first convolution
         layers: List[int] = [2, 2, 2, 2],
         aux_in_channels: Optional[int] = None,
@@ -29,41 +30,25 @@ class ResNetEncoder(nn.Module):
             raise ValueError('out_channels should have at least 2 elements so that '
                                 'the encoder has at least 1 residual block')
 
-        self.in_channels = in_channels 
+        self.in_channels_high_res = in_channels_high_res 
+        self.in_channels_low_res = in_channels_low_res 
         self._out_channels = out_channels
         self.aux_in_position = aux_in_position
         self._norm_layer = nn.BatchNorm2d
         self.inplanes = out_channels[0] # used by self._make_layer()
         self.dilation = 1
 
-        # create layers
-        conv1 = nn.Conv2d(in_channels, out_channels[0], kernel_size=7, stride=2, padding=3,
-                               bias=False)
-        bn1 = self._norm_layer(out_channels[0])
-        relu = nn.ReLU(inplace=True)
-        maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
-
-        # first block of residual blocks
-        if aux_in_position == 1:
-            self.inplanes += aux_in_channels
-        layer1 = self._make_layer(block, out_channels[1], layers[0])
-
-        stages = [  nn.Sequential(conv1, bn1, relu),
-                    nn.Sequential(maxpool, layer1) ]
-
-        # next blocks of residual blocks
-        if len(out_channels) > 2:
-            for i in range(2, len(out_channels)):
-                if aux_in_position == i:
-                    self.inplanes += aux_in_channels
-                stages.append(self._make_layer(block, out_channels[i], layers[i-1], stride=2))
-
-        self.stages = nn.ModuleList(stages)
-
-        if aux_in_channels is None:
-            self.forward = self._forward_1_input
-        else:
-            self.forward = self._forward_2_inputs
+        try:
+            if aux_in_channels is None:
+                #low resolution images
+                self.stages_low_res = self._make_stages_low_res(block=block, layers=layers)
+                self.forward = self._forward_1_input
+            else:
+                # high resolution images
+                self.stages_high_res = self._make_stages_high_res(block=block, layers=layers)
+                self.forward = self._forward_2_inputs
+        except Exception as e:
+            raise e
 
         # parameter initialization done at SegmentationModel level
 
@@ -87,6 +72,8 @@ class ResNetEncoder(nn.Module):
             )
 
         layers = []
+        # print('self.inplanes',self.inplanes, 'planes',planes, 'stride',stride, 'downsample',downsample, 
+        #                     'previous_dilation',previous_dilation, 'norm_layer',norm_layer)
         layers.append(block(self.inplanes, planes, stride, downsample, 
                             dilation = previous_dilation, norm_layer = norm_layer))
         self.inplanes = planes * block.expansion
@@ -101,10 +88,15 @@ class ResNetEncoder(nn.Module):
         Forward method for a single input
         """
         features = []
-        for i in range(len(self.stages)):
-            x = self.stages[i](x)
-            features.append(x) 
+        # torch.Size([8, 3, 512, 512])
+        for i in range(len(self.stages_low_res)):
+            # print('x   :::: ', x.shape)
+            # print(self.stages_low_res[i])
+            x = self.stages_low_res[i](x)
+            features.append(x)
+        # print('_forward_1_input',x.shape)
         return features
+
 
     def _forward_2_inputs(self, x_0, x_1):
         """
@@ -113,11 +105,69 @@ class ResNetEncoder(nn.Module):
         """
         features = []
         x = x_0
-        for i in range(len(self.stages)):
+        # print(x.shape, x_1.shape)
+        for i in range(len(self.stages_high_res)):
             if self.aux_in_position == i:
+                # print('torch.cat: ', x.shape, x_1.shape)
                 x = torch.cat((x, x_1), dim = 1)
-            x = self.stages[i](x)
+            # print('x   :::: ', x.shape)
+            # print(self.stages_high_res[i])
+            x = self.stages_high_res[i](x)
             features.append(x)
+        # print('_forward_2_input',x.shape)
         return features
+
+    def _make_stages_high_res(self, block, layers):
+        # create layers
+        conv1 = nn.Conv2d(self.in_channels_high_res, self._out_channels[0], kernel_size=7, stride=2, padding=3,
+                               bias=False)
+        bn1 = self._norm_layer(self._out_channels[0])
+        relu = nn.ReLU(inplace=True)
+        maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
+
+        # first block of residual blocks
+        if self.aux_in_position == 1:
+            self.inplanes += self.aux_in_position
+        layer1 = self._make_layer(block, self._out_channels[1], layers[0])
+
+        stages = [  nn.Sequential(conv1, bn1, relu),
+                    nn.Sequential(maxpool, layer1) ]
+
+        # next blocks of residual blocks
+        if len(self._out_channels) > 2:
+            for i in range(2, len(self._out_channels)):
+                if self.aux_in_position == i:
+                    self.inplanes += self.aux_in_position
+                stages.append(self._make_layer(block, self._out_channels[i], layers[i-1], stride=2))
+
+        return nn.ModuleList(stages)
+
+    def _make_stages_low_res(self, block, layers):
+        # create layers
+        conv1 = nn.Conv2d(self.in_channels_low_res, self._out_channels[0], kernel_size=7, stride=1, padding=3,
+                               bias=False) # lower stride
+        bn1 = self._norm_layer(self._out_channels[0])
+        relu = nn.ReLU(inplace=True)
+        maxpool = nn.MaxPool2d(kernel_size=3, stride=1, padding=1)# lower stride
+
+        # first block of residual blocks
+        if self.aux_in_position == 1:
+            self.inplanes += self.aux_in_position
+        layer1 = self._make_layer(block, self._out_channels[1], layers[0])
+        # print('_make_layer ', layer1, self._out_channels[1], layers[0])
+
+        stages = [  nn.Sequential(conv1, bn1, relu),
+                    nn.Sequential(maxpool, layer1) ]
+
+        # next blocks of residual blocks
+        if len(self._out_channels) > 2:
+            for i in range(2, len(self._out_channels)):
+                if self.aux_in_position == i:
+                    self.inplanes += self.aux_in_position
+                # print('_make_layer ', self._make_layer(block, self._out_channels[i], layers[i-1], stride=2), self._out_channels[i], layers[i-1])
+                stages.append(self._make_layer(block, self._out_channels[i], layers[i-1], stride=2))
+
+        return nn.ModuleList(stages)
+
 
 

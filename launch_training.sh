@@ -1,10 +1,10 @@
 #!/bin/bash
 
 python src/train.py \
-        --input_sources IMAGE2017 \
+        --input_sources SI2017 ALTI\
         --target_source TLM5c \
         --use_subset \
-        --batch_size 16 \
+        --batch_size 8 \
         --num_epochs 20 \
         --lr 1e-5 1e-6 1e-6 1e-7 \
         --learning_schedule 5 5 5 5 \
@@ -13,7 +13,7 @@ python src/train.py \
         --decision h \
         --num_workers 2 \
         --no_user_input \
-        --output_dir /home/olivier/forest-mapping/multi-resolution-forest-mapping/results
+        --output_dir /media/data/charrez/multi-resolution-forest-mapping/results
         # > log.txt
         # --resume_training \
         # --debug \

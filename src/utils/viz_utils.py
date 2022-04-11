@@ -21,7 +21,10 @@ def show_training_losses(fn, hierarchical = False):
     mk = 'o'
     total_color = 'dodgerblue'
     color = 'darkorange'
+    color_sim = 'darkblue'
+    color_feature = 'darkgreen'
     bin_color = 'rebeccapurple'
+    bin_color_sim = '#8e7cc3'
 
     # linestyles
     val_ls = ':'
@@ -41,18 +44,30 @@ def show_training_losses(fn, hierarchical = False):
         plt.plot(total_losses, train_ls+mk, label='total loss (training)', color=total_color, fillstyle = train_fs)
     losses = d['train_losses']
     plt.plot(losses, train_ls+mk, label='loss (training)', color=color, fillstyle = train_fs)
+    losses_sim = d['train_losses_sim']
+    plt.plot(losses_sim, train_ls+mk, label='loss sim (training)', color=color_sim, fillstyle = train_fs)
+    losses_feature = d['train_losses_feature']
+    plt.plot(losses_feature, train_ls+mk, label='loss feature (training)', color=color_feature, fillstyle = train_fs)
     if hierarchical:
         bin_losses = d['train_binary_losses']
         plt.plot(bin_losses, train_ls+mk, label='binary loss (training)', color=bin_color, fillstyle = train_fs)
+        bin_losses_sim = d['train_binary_losses_sim']
+        plt.plot(bin_losses_sim, train_ls+mk, label='binary loss sim (training)', color=bin_color_sim, fillstyle = train_fs)
     if not args['skip_validation']:
         if hierarchical:
             val_total_losses = d['val_total_losses']
             plt.plot(val_total_losses, val_ls+mk, label='total loss (validation)', color=total_color, fillstyle = val_fs)
         val_losses = d['val_losses']
         plt.plot(val_epochs, val_losses, val_ls+mk, label='loss (validation)', color=color, fillstyle = val_fs)
+        val_losses_sim = d['val_losses_sim']
+        plt.plot(val_epochs, val_losses_sim, val_ls+mk, label='loss sim (validation)', color=color_sim, fillstyle = val_fs)
+        val_losses_feature = d['val_losses_feature']
+        plt.plot(val_epochs, val_losses_feature, val_ls+mk, label='loss feature (validation)', color=color_feature, fillstyle = val_fs)
         if hierarchical:
             val_bin_losses = d['val_binary_losses']
-            plt.plot(val_epochs, val_bin_losses, val_ls+mk, label='binary loss (validation)', color=bin_color, fillstyle = val_fs)            
+            plt.plot(val_epochs, val_bin_losses, val_ls+mk, label='binary loss (validation)', color=bin_color, fillstyle = val_fs)  
+            val_bin_losses_sim = d['val_binary_losses_sim']
+            plt.plot(val_epochs, val_bin_losses_sim, val_ls+mk, label='binary loss (validation)', color=bin_color_sim, fillstyle = val_fs)           
     proportion_neg_samples = d['proportion_negative_samples']
     plt.plot(proportion_neg_samples, train_ls+'D', label='proportion of negative samples (training)', color='grey', fillstyle = train_fs)
     plt.xlabel('epoch')

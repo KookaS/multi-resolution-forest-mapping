@@ -5,21 +5,18 @@ import numpy as np
 from tqdm import tqdm
 
 DIR = {'SI2017': '/home/tanguyen/Documents/Projects/2020/ForestMapping/Data/SwissImage/2017_25cm',
-    'IMAGE2017': '/home/olivier/forest-mapping/SwissIMAGE/2017',
     'TLM2c': '/home/tanguyen/Documents/Projects/2020/ForestMapping/Data/TLMRaster/F',
     'TLM4c': '/home/tanguyen/Documents/Projects/2020/ForestMapping/Data/TLMRaster/OF_F_SF',
     'TLM5c': '/home/tanguyen/Documents/Projects/2020/ForestMapping/Data/TLMRaster/5c',
     'ALTI': '/home/tanguyen/Documents/Projects/2020/ForestMapping/Data/SwissALTI3D'}
 
 PREFIX = {'SI2017': 'DOP25_LV95', 
-    'IMAGE2017': 'gray_DOP100_LV95',
     'TLM2c': 'TLM_F',
     'TLM4c': 'TLM_OF_F_SF',
     'TLM5c': 'TLM5c',
     'ALTI' : 'SWISSALTI3D_0.5_TIFF_CHLV95_LN02'}
 
 SUFFIX = {'SI2017': '_2017_1.tif', 
-    'IMAGE2017': '_2017_1.tif',
     'TLM2c': '.tif',
     'TLM4c': '.tif',
     'TLM5c': '.tif',
@@ -32,7 +29,6 @@ VAL_VIZ_ZONE = [ [(2568, 2572), (1095, 1101)],
 
 default_tilenum_extractor = lambda x: os.path.splitext('_'.join(os.path.basename(x).split('_')[-2:]))[0]
 TILENUM_EXTRACTOR = {'SI2017': lambda x: '_'.join(os.path.basename(x).split('_')[2:4]),
-                    'IMAGE2017': lambda x: '_'.join(os.path.basename(x).split('_')[2:4]),
                     'ALTI': default_tilenum_extractor,
                     'TLM3c': default_tilenum_extractor,
                     'TLM4c': default_tilenum_extractor,

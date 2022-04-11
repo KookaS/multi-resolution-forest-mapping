@@ -19,6 +19,7 @@ from .write_utils import Writer
 import random
 from tqdm import tqdm
 import gc
+from data.generate_data import generate_simulated_image
 
 
 class Inference():
@@ -261,47 +262,78 @@ class Inference():
 
         # initialize accumulators
         output = torch.zeros((self.exp_utils.output_channels, height, width), dtype=torch.float32)
+        output_sim = torch.zeros((self.exp_utils.output_channels, height, width), dtype=torch.float32)
         counts = torch.zeros((height, width), dtype=torch.float32)
+        counts_sim = torch.zeros((height, width), dtype=torch.float32)
 
         inputs, targets = data
         num_batches = len(inputs[0])
         if self.evaluate:
+            feature_losses = [0] * num_batches
             if seg_criterion is not None:
                 seg_losses = [0] * num_batches
+                seg_losses_sim = [0] * num_batches
                 valid_px_list = [0] * num_batches
             if seg_criterion_2 is not None:
                 seg_bin_losses = [0] * num_batches
+                seg_bin_losses_sim = [0] * num_batches
                 valid_px_bin_list = [0] * num_batches
         # iterate over batches of small patches
         for batch_idx in range(num_batches):
             # get the prediction for the batch
             input_data = [data[batch_idx].to(self.device) for data in inputs]
+            inputs_data_sim = []
+            for data in inputs:
+                if (data[batch_idx].shape[1] == 3):
+                    inputs_data_sim.append(generate_simulated_image(data[batch_idx]).to(self.device))
+            # for input in inputs:
+            #     if (input.shape[1] == 3):
+            #         temp = generate_simulated_image(img=input.clone())
+            #         inputs_data_sim.append(temp[batch_idx].to(self.device))
             if targets is not None:
                 target_data = targets[batch_idx].to(self.device) 
             with torch.no_grad():
                 # forward pass
-                t_main_actv = self.model(*input_data)
+                feature_space = self.model.encode(*input_data, sim=False)
+                feature_space_sim = self.model.encode(*inputs_data_sim, sim=True)
+                t_main_actv = self.model.decode(*feature_space)
+                t_main_actv_sim = self.model.decode(*feature_space_sim)
+
                 # compute validation losses
                 if self.evaluate:
+                    # RMSE of feature spaces
+                    feature_criterion = nn.MSELoss()
+                    feature_loss=0
+                    # first output in feature space does not match dimensions torch.Size([8, 64, 256, 256]) vs torch.Size([8, 64, 128, 128])
+                    # TODO [1:] or [-1]
+                    for (f, fs) in zip(feature_space[-1], feature_space_sim[-1]):
+                        feature_loss += torch.sqrt(feature_criterion(f, fs))
+                    feature_losses[batch_idx] = feature_loss.item()
+
                     if seg_criterion is not None:
                         if seg_criterion_2 is not None:
                             seg_actv, bin_seg_actv = t_main_actv[:, :-1], t_main_actv[:, -1]
+                            seg_actv_sim, bin_seg_actv_sim = t_main_actv_sim[:, :-1], t_main_actv_sim[:, -1]
                             seg_target, bin_seg_target = target_data[:, 0], target_data[:, 1].float() # BCE loss needs float
                             # compute validation loss for binary subtask (last two channels)
                             bin_seg_mask = bin_seg_target != self.target_vrt_nodata_val # custom ignore_index
                             seg_bin_losses[batch_idx] = seg_criterion_2(bin_seg_actv[bin_seg_mask], bin_seg_target[bin_seg_mask]).item()
+                            seg_bin_losses_sim[batch_idx] = seg_criterion_2(bin_seg_actv_sim[bin_seg_mask], bin_seg_target[bin_seg_mask]).item()
                             valid_px_bin_list[batch_idx] = torch.sum(bin_seg_mask).item()
                         else:
                             seg_actv = t_main_actv
+                            seg_actv_sim = t_main_actv_sim
                             seg_target = target_data #.squeeze(1)
                         # main loss
                         
                         seg_mask = seg_target != seg_criterion.ignore_index
                         seg_losses[batch_idx] = seg_criterion(seg_actv, seg_target).item()
+                        seg_losses_sim[batch_idx] = seg_criterion(seg_actv_sim, seg_target).item()
                         valid_px_list[batch_idx] = torch.sum(seg_mask).item()
                         
                 # move predictions to cpu
                 main_pred = self.seg_normalization(t_main_actv).cpu()
+                main_pred_sim = self.seg_normalization(t_main_actv_sim).cpu()
             # accumulate the batch predictions
             for j in range(main_pred.shape[0]):
                 x, y =  coords[batch_idx][j]
@@ -309,6 +341,12 @@ class Inference():
                 y_start, y_stop = y*s, (y+self.patch_size)*s
                 counts[x_start:x_stop, y_start:y_stop] += self.kernel
                 output[:, x_start:x_stop, y_start:y_stop] += main_pred[j] * self.kernel
+            for j in range(main_pred_sim.shape[0]):
+                x, y =  coords[batch_idx][j]
+                x_start, x_stop = x*s, (x+self.patch_size)*s
+                y_start, y_stop = y*s, (y+self.patch_size)*s
+                counts_sim[x_start:x_stop, y_start:y_stop] += self.kernel
+                output_sim[:, x_start:x_stop, y_start:y_stop] += main_pred[j] * self.kernel
                 
         # normalize the accumulated predictions
         counts = torch.unsqueeze(counts, dim = 0)
@@ -317,26 +355,45 @@ class Inference():
         rep_mask = mask.expand(output.shape[0], -1, -1)
         rep_counts = counts.expand(output.shape[0], -1, -1)
         output[rep_mask] = output[rep_mask] / rep_counts[rep_mask]
+
+        counts_sim = torch.unsqueeze(counts_sim, dim = 0)
+        mask = counts_sim != 0
+
+        rep_mask = mask.expand(output_sim.shape[0], -1, -1)
+        rep_counts = counts_sim.expand(output_sim.shape[0], -1, -1)
+        output_sim[rep_mask] = output_sim[rep_mask] / rep_counts[rep_mask]
         
         # aggregate losses
         if self.evaluate:
+            feature_loss = np.average(feature_losses, axis = 0)
             if seg_criterion is None:
                 seg_loss, total_valid_px = None, None
+                seg_loss_sim, total_valid_px_sim = None, None
             else:
                 seg_loss, total_valid_px = self._aggregate_batch_losses(seg_losses, 
                                                                         valid_px_list)
+                seg_loss_sim, total_valid_px_sim = self._aggregate_batch_losses(seg_losses_sim, 
+                                                                        valid_px_list)
             if seg_criterion_2 is None:
                 seg_bin_loss, total_valid_bin_px = None, None
+                seg_bin_loss_sim, total_valid_bin_px_sim = None, None
             else:
                 seg_bin_loss, total_valid_bin_px = self._aggregate_batch_losses(seg_bin_losses, 
+                                                                                valid_px_bin_list)
+                seg_bin_loss_sim, total_valid_bin_px_sim = self._aggregate_batch_losses(seg_bin_losses_sim, 
                                                                                 valid_px_bin_list)
         else:
             seg_loss, total_valid_px = None, None 
             seg_bin_loss, total_valid_bin_px = None, None
+            seg_loss_sim, total_valid_px_sim = None, None
+            seg_bin_loss_sim, total_valid_bin_px_sim = None, None
+            feature_loss = None
         # remove margins
         output = output[:, top_margin:height-bottom_margin, left_margin:width-right_margin]
+        output_sim = output_sim[:, top_margin:height-bottom_margin, left_margin:width-right_margin]
         
-        return output, ((seg_loss, total_valid_px), (seg_bin_loss, total_valid_bin_px))
+        return (output, output_sim), ((seg_loss, total_valid_px), (seg_bin_loss, total_valid_bin_px), 
+                (seg_loss_sim, total_valid_px_sim), (seg_bin_loss_sim, total_valid_bin_px_sim), feature_loss)
     
     @staticmethod            
     def _aggregate_batch_losses(loss_list, valid_px_list):
@@ -364,13 +421,18 @@ class Inference():
             self._get_vrt_from_df(df)
         # set the cumulative confusion matrix to 0
         if self.evaluate:
-            self._reset_cm()       
+            self._reset_cm()   
+            feature_losses = [0] * len(df)  
             if seg_criterion is not None:
                 seg_losses = [0] * len(df)
                 valid_px_list = [0] * len(df)
+                seg_losses_sim = [0] * len(df)
+                valid_px_list_sim = [0] * len(df)
             if seg_criterion_2 is not None:
                 seg_bin_losses = [0] * len(df)
                 valid_px_bin_list = [0] * len(df)
+                seg_bin_losses_sim = [0] * len(df)
+                valid_px_bin_list_sim = [0] * len(df)
                 
         #create dataset
         ds = InferenceDataset(self.input_vrt_fns, 
@@ -394,22 +456,31 @@ class Inference():
             progress_bar.set_postfix_str('Tiles(s): {}'.format(tile_num))
 
             # compute forward pass and aggregate outputs
-            output, losses  = self._infer_sample(batch_data, coords, dims, margins, 
+            outputs, losses  = self._infer_sample(batch_data, coords, dims, margins, 
                                                   seg_criterion=seg_criterion, 
                                                   seg_criterion_2=seg_criterion_2)
-            (seg_loss, valid_px), (seg_bin_loss, valid_bin_px) = losses
+            output, output_sim = outputs
+            (seg_loss, valid_px), (seg_bin_loss, valid_bin_px), (seg_loss_sim, valid_px_sim), (seg_bin_loss_sim, valid_bin_px_sim), feature_loss = losses
             # store validation losses
             if self.evaluate:
+                feature_losses[tile_idx] = feature_loss
                 if seg_criterion is not None:
                     seg_losses[tile_idx] = seg_loss
                     valid_px_list[tile_idx] = valid_px
+                    seg_losses_sim[tile_idx] = seg_loss_sim
+                    valid_px_list_sim[tile_idx] = valid_px_sim
                 if seg_criterion_2 is not None:
                     seg_bin_losses[tile_idx] = seg_bin_loss
                     valid_px_bin_list[tile_idx] = valid_bin_px
+                    seg_bin_losses_sim[tile_idx] = seg_bin_loss_sim
+                    valid_px_bin_list_sim[tile_idx] = valid_bin_px_sim
 
             # compute hard predictions and update confusion matrix
             output = output.numpy()
+            output_sim = output_sim.numpy()
             output_hard, output_hard_2, output_hard_1 = self._get_decisions(actv=output, 
+                                                                            target_data=target_data)
+            output_hard_sim, output_hard_2_sim, output_hard_1_sim = self._get_decisions(actv=output_sim, 
                                                                             target_data=target_data)
 
             
@@ -418,16 +489,26 @@ class Inference():
                 rep_mask = np.repeat(input_nodata_mask[np.newaxis, :, :], output.shape[0], axis = 0)
                 output[rep_mask] = self.exp_utils.f_out_nodata_val
                 output_hard[input_nodata_mask] = self.exp_utils.i_out_nodata_val
+                output_sim[rep_mask] = self.exp_utils.f_out_nodata_val
+                output_hard_sim[input_nodata_mask] = self.exp_utils.i_out_nodata_val
                 if output_hard_1 is not None:
                     output_hard_1[input_nodata_mask] = self.exp_utils.i_out_nodata_val
                 if output_hard_2 is not None:
                     output_hard_2[input_nodata_mask] = self.exp_utils.i_out_nodata_val
+                if output_hard_1_sim is not None:
+                    output_hard_1_sim[input_nodata_mask] = self.exp_utils.i_out_nodata_val
+                if output_hard_2_sim is not None:
+                    output_hard_2_sim[input_nodata_mask] = self.exp_utils.i_out_nodata_val
             if self.save_error_map: 
                 valid_mask = ~input_nodata_mask
                 if self.decision == 'f':
                     main_target = target_data
                     valid_mask *= (main_target != self.target_vrt_nodata_val)# * ~input_nodata_mask
                     seg_error_map = get_seg_error_map(pred=output_hard, 
+                                                    target=main_target, 
+                                                    valid_mask=valid_mask, 
+                                                    n_classes=self.exp_utils.n_classes)
+                    seg_error_map_sim = get_seg_error_map(pred=output_hard_sim, 
                                                     target=main_target, 
                                                     valid_mask=valid_mask, 
                                                     n_classes=self.exp_utils.n_classes)
@@ -440,19 +521,34 @@ class Inference():
                                                     target=target_data[1], 
                                                     valid_mask=valid_mask*(target_data[1]!=self.target_vrt_nodata_val), 
                                                     n_classes=self.exp_utils.n_classes_2)
+                    seg_error_map_1_sim = get_seg_error_map(pred=output_hard_1_sim, 
+                                                    target=target_data[0], 
+                                                    valid_mask=valid_mask*(target_data[0]!=self.target_vrt_nodata_val), 
+                                                    n_classes=self.exp_utils.n_classes_1)
+                    seg_error_map_2_sim = get_seg_error_map(pred=output_hard_2_sim, 
+                                                    target=target_data[1], 
+                                                    valid_mask=valid_mask*(target_data[1]!=self.target_vrt_nodata_val), 
+                                                    n_classes=self.exp_utils.n_classes_2)
                     # 0: no error, 1: forest type error, 2: presence of forest error, 3: both errors
                     seg_error_map = (seg_error_map_1>0).astype(np.uint8)
                     seg_error_map[seg_error_map_2>0] += 2
+                    seg_error_map_sim = (seg_error_map_1_sim>0).astype(np.uint8)
+                    seg_error_map_sim[seg_error_map_2_sim>0] += 2
 
             # write outputs 
-            if self.save_hard or self.save_soft:   
+            if self.save_hard or self.save_soft:
                 writer = Writer(self.exp_utils, tile_num, template_fn, 
                                 template_scale = self.exp_utils.input_scales[0], 
                                 dest_scale=self.exp_utils.target_scale)
                 # main segmentation output
                 writer.save_seg_result(self.output_dir, 
+                                        save_hard = self.save_hard, output_hard = output_hard_sim, 
+                                        save_soft = self.save_soft, output_soft = output_sim, 
+                                        colormap = self.exp_utils.colormap)
+                writer.save_seg_result(self.output_dir, 
                                         save_hard = self.save_hard, output_hard = output_hard, 
                                         save_soft = self.save_soft, output_soft = output, 
+                                        suffix = '_sim', 
                                         colormap = self.exp_utils.colormap)
                 if self.binary_map:
                     # binary forest/non-forest
@@ -461,6 +557,11 @@ class Inference():
                                             save_soft = False, output_soft = None, 
                                             suffix = self.exp_utils.suffix_2, 
                                             colormap = self.exp_utils.colormap_2)
+                    writer.save_seg_result(self.output_dir, 
+                                            save_hard = self.save_hard, output_hard = output_hard_2_sim, 
+                                            save_soft = False, output_soft = None, 
+                                            suffix = self.exp_utils.suffix_2 + "_sim", 
+                                            colormap = self.exp_utils.colormap_2)
                     
                     if self.decision == 'h':
                         # forest type
@@ -468,6 +569,11 @@ class Inference():
                                                 save_hard = self.save_hard, output_hard = output_hard_1, 
                                                 save_soft = False, output_soft = None, 
                                                 suffix = self.exp_utils.suffix_1, 
+                                                colormap = self.exp_utils.colormap_1)
+                        writer.save_seg_result(self.output_dir, 
+                                                save_hard = self.save_hard, output_hard = output_hard_1_sim, 
+                                                save_soft = False, output_soft = None, 
+                                                suffix = self.exp_utils.suffix_1 + "_sim", 
                                                 colormap = self.exp_utils.colormap_1)
                         if self.save_error_map:
                             writer.save_seg_result(self.output_dir, 
@@ -480,17 +586,36 @@ class Inference():
                                                 save_soft = False, output_soft = None, 
                                                 suffix = '_error_2', 
                                                 colormap = None)
+                            writer.save_seg_result(self.output_dir, 
+                                                save_hard = self.save_hard, output_hard = seg_error_map_1_sim, 
+                                                save_soft = False, output_soft = None, 
+                                                suffix = '_error_1_sim', 
+                                                colormap = None)
+                            writer.save_seg_result(self.output_dir, 
+                                                save_hard = self.save_hard, output_hard = seg_error_map_2_sim, 
+                                                save_soft = False, output_soft = None, 
+                                                suffix = '_error_2_sim', 
+                                                colormap = None)
                 if self.save_error_map:
                     writer.save_seg_result(self.output_dir, 
                                         save_hard = self.save_hard, output_hard = seg_error_map, 
                                         save_soft = False, output_soft = None, 
                                         suffix = '_error',
                                         colormap = None)
+                    writer.save_seg_result(self.output_dir, 
+                                        save_hard = self.save_hard, output_hard = seg_error_map_sim, 
+                                        save_soft = False, output_soft = None, 
+                                        suffix = '_error_sim',
+                                        colormap = None)
             
             del output
             del output_hard
             del output_hard_2
             del output_hard_1
+            del output_sim
+            del output_hard_sim
+            del output_hard_2_sim
+            del output_hard_1_sim
             gc.collect()
 
         ###### compute metrics ######
@@ -498,12 +623,18 @@ class Inference():
         if self.evaluate:
             # compute confusion matrix and report
             reports = self._compute_metrics()
+
+            feature_loss = np.average(feature_losses, axis = 0)
             # aggregate losses/errors/samples the validation set
             seg_loss = None if seg_criterion is None else np.average(seg_losses, axis = 0, 
                                                                                 weights = valid_px_list)
             seg_bin_loss = None if seg_criterion_2 is None else np.average(seg_bin_losses, axis = 0, 
                                                                                 weights = valid_px_bin_list)
-            return self.cum_cms, reports, (seg_loss, seg_bin_loss)
+            seg_loss_sim = None if seg_criterion is None else np.average(seg_losses_sim, axis = 0, 
+                                                                                weights = valid_px_list_sim)
+            seg_bin_loss_sim = None if seg_criterion_2 is None else np.average(seg_bin_losses_sim, axis = 0, 
+                                                                                weights = valid_px_bin_list_sim)
+            return self.cum_cms, reports, ((seg_loss, seg_bin_loss), (seg_loss_sim, seg_bin_loss_sim), feature_loss)
         else:
             return None
         
