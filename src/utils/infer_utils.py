@@ -33,7 +33,7 @@ class Inference():
     """
     def __init__(self, model, file_list, exp_utils, output_dir = None, 
                         evaluate = True, save_hard = True, save_soft = True, save_error_map = False,
-                        batch_size = 32, num_workers = 0, device = 0, undersample = 1, decision = 'f'):
+                        batch_size = 32, num_workers = 0, device = 0, undersample = 1, decision = 'f', compare_dates=False):
 
         """
         Args:
@@ -67,6 +67,7 @@ class Inference():
         self.decision = decision
         self.input_vrt_fn = None # used to indicate that virtual raster mosaic(s) has not been created yet
         self.save_error_map = save_error_map
+        self.compare_dates = compare_dates
 
         self.n_inputs = self.exp_utils.n_input_sources
 
@@ -100,10 +101,13 @@ class Inference():
         self.cum_cms = {}
         if self.evaluate:
             self.cum_cms['seg'] = np.empty((self.exp_utils.n_classes,) * 2)
+            self.cum_cms['seg_sim'] = np.empty((self.exp_utils.n_classes,) * 2)
             if self.binary_map:
                 self.cum_cms['seg_2'] = np.empty((self.exp_utils.n_classes_2,) * 2)
+                self.cum_cms['seg_2_sim'] = np.empty((self.exp_utils.n_classes_2,) * 2)
                 if self.decision == 'h':
                     self.cum_cms['seg_1'] = np.empty((self.exp_utils.n_classes_1,) * 2)
+                    self.cum_cms['seg_1_sim'] = np.empty((self.exp_utils.n_classes_1,) * 2)
                       
 
     def _normalize_hierarchical_output(self, output):
@@ -116,7 +120,7 @@ class Inference():
     def _get_col_names(self):
         """Get the column names used to read the dataset dataframe"""
         if self.n_inputs < 2:
-            self.input_col_names = 'input'
+            self.input_col_names = ['input']
         else:
             self.input_col_names = ['input_' + str(i) for i in range(self.n_inputs)]
     
@@ -185,18 +189,23 @@ class Inference():
                 self.cum_cms[key].fill(0)
                 
 
-    def _get_decisions(self, actv, target_data):
+    def _get_decisions(self, actv, actv_sim, target_data):
         """Obtain decisions from soft outputs (argmax) and update confusion matrix/matrices"""
         # define main and binary outputs/targets and compute hard predictions
         if self.decision == 'f':
             # define the outputs 
             output = actv
             output_2 = actv
+            output_sim = actv_sim
+            output_2_sim = actv_sim
             # compute hard predictions
             output_hard = self.exp_utils.decision_func(output)
             output_hard_1 = None
             # define the targets 
             output_hard_2 = None
+            output_hard_sim = self.exp_utils.decision_func(output_sim)
+            output_hard_1_sim = None
+            output_hard_2_sim = None
             if self.evaluate: 
                 target = target_data
                 if self.binary_map:
@@ -204,15 +213,21 @@ class Inference():
                     target_2 = self.exp_utils.target_recombination(target_data)
                     #if self.exp_utils.decision_func_2 is not None:
                     output_hard_2 = self.exp_utils.decision_func_2(output_2)
+                    output_hard_2_sim = self.exp_utils.decision_func_2(output_2_sim)
          
         else:
             # define the outputs 
             output_1 = actv[:-1]
             output_2 = actv[-1]
+            output_1_sim = actv_sim[:-1]
+            output_2_sim = actv_sim[-1]
             # compute hard predictions
             output_hard_1 = self.exp_utils.decision_func(output_1) # ForestType
             output_hard_2 = self.exp_utils.decision_func_2(output_2) # PresenceOfForest
             output_hard = (output_hard_1 + 1) * output_hard_2 # apply decision tree -> TLM4c
+            output_hard_1_sim = self.exp_utils.decision_func(output_1_sim) # ForestType
+            output_hard_2_sim = self.exp_utils.decision_func_2(output_2_sim) # PresenceOfForest
+            output_hard_sim = (output_hard_1_sim + 1) * output_hard_2_sim # apply decision tree -> TLM4c
             # define the targets
             if self.evaluate or self.save_error_map:
                 target = target_data[-1] # TLM4c
@@ -229,20 +244,29 @@ class Inference():
             self.cum_cms['seg']+= my_confusion_matrix(target, 
                                                      output_hard,
                                                      self.exp_utils.n_classes)
+            self.cum_cms['seg_sim']+= my_confusion_matrix(target, 
+                                                     output_hard_sim,
+                                                     self.exp_utils.n_classes)
             
             # other tasks / output
             if self.binary_map:
                 self.cum_cms['seg_2'] += my_confusion_matrix(
                                             target_2, 
                                             output_hard_2, self.exp_utils.n_classes_2)
+                self.cum_cms['seg_2_sim'] += my_confusion_matrix(
+                                            target_2, 
+                                            output_hard_2_sim, self.exp_utils.n_classes_2)
                 if self.decision == 'h':
                     if self.evaluate:
                         self.cum_cms['seg_1'] += my_confusion_matrix(
                                                 target_1, 
                                                 output_hard_1, self.exp_utils.n_classes_1)
+                        self.cum_cms['seg_1_sim'] += my_confusion_matrix(
+                                                target_1, 
+                                                output_hard_1_sim, self.exp_utils.n_classes_1)
 
 
-        return output_hard, output_hard_2, output_hard_1
+        return (output_hard, output_hard_2, output_hard_1), (output_hard_sim, output_hard_2_sim, output_hard_1_sim)
 
     def _compute_metrics(self):
         """Compute classification metrics from confusion matrices"""
@@ -252,7 +276,7 @@ class Inference():
         return reports
 
     def _infer_sample(self, data, coords, dims, margins, 
-                      seg_criterion = None, seg_criterion_2 = None):
+                      seg_criterion = None, seg_criterion_2 = None, compare_dates = False):
         """Performs inference on one (multi-source) input accessed through dataset ds, with multiple outputs."""
 
         # compute dimensions of the output
@@ -264,7 +288,6 @@ class Inference():
         output = torch.zeros((self.exp_utils.output_channels, height, width), dtype=torch.float32)
         output_sim = torch.zeros((self.exp_utils.output_channels, height, width), dtype=torch.float32)
         counts = torch.zeros((height, width), dtype=torch.float32)
-        counts_sim = torch.zeros((height, width), dtype=torch.float32)
 
         inputs, targets = data
         num_batches = len(inputs[0])
@@ -281,21 +304,30 @@ class Inference():
         # iterate over batches of small patches
         for batch_idx in range(num_batches):
             # get the prediction for the batch
-            input_data = [data[batch_idx].to(self.device) for data in inputs]
-            inputs_data_sim = []
-            for data in inputs:
-                if (data[batch_idx].shape[1] == 3):
-                    inputs_data_sim.append(generate_simulated_image(data[batch_idx]).to(self.device))
-            # for input in inputs:
-            #     if (input.shape[1] == 3):
-            #         temp = generate_simulated_image(img=input.clone())
-            #         inputs_data_sim.append(temp[batch_idx].to(self.device))
+            if (compare_dates):
+                input_data = []
+                input_data_sim = []
+                for data in inputs:
+                    if (data[batch_idx].shape[1] == 3):
+                        input_data.append(data[batch_idx])
+                    else:
+                        input_data_sim.append(data[batch_idx])
+
+                print(input_data.shape, input_data_sim.shape)
+            else:
+                input_data = [data[batch_idx].to(self.device) for data in inputs]
+                input_data_sim = []
+                for data in inputs:
+                    if (data[batch_idx].shape[1] == 3):
+                        input_data_sim.append(generate_simulated_image(data[batch_idx]).to(self.device))
+            
             if targets is not None:
                 target_data = targets[batch_idx].to(self.device) 
+
             with torch.no_grad():
                 # forward pass
                 feature_space = self.model.encode(*input_data, sim=False)
-                feature_space_sim = self.model.encode(*inputs_data_sim, sim=True)
+                feature_space_sim = self.model.encode(*input_data_sim, sim=True)
                 t_main_actv = self.model.decode(*feature_space)
                 t_main_actv_sim = self.model.decode(*feature_space_sim)
 
@@ -325,7 +357,19 @@ class Inference():
                             seg_actv_sim = t_main_actv_sim
                             seg_target = target_data #.squeeze(1)
                         # main loss
-                        
+
+                        # if torch.isnan(torch.sum(seg_actv)) or torch.isinf(torch.sum(seg_actv)):
+                        #     print('invalid input detected at iteration ')
+                        # if torch.isnan(torch.sum(seg_target)) or torch.isinf(torch.sum(seg_target)):
+                        #     print('invalid input detected at iteration ')
+
+                        # print('seg_criterion')
+                        # print('seg_actv', seg_actv)
+                        # print(seg_criterion(seg_actv, seg_target).item())
+                        # print('seg_actv_sim', seg_actv_sim)
+                        # print(seg_criterion(seg_actv_sim, seg_target).item())
+
+
                         seg_mask = seg_target != seg_criterion.ignore_index
                         seg_losses[batch_idx] = seg_criterion(seg_actv, seg_target).item()
                         seg_losses_sim[batch_idx] = seg_criterion(seg_actv_sim, seg_target).item()
@@ -341,12 +385,7 @@ class Inference():
                 y_start, y_stop = y*s, (y+self.patch_size)*s
                 counts[x_start:x_stop, y_start:y_stop] += self.kernel
                 output[:, x_start:x_stop, y_start:y_stop] += main_pred[j] * self.kernel
-            for j in range(main_pred_sim.shape[0]):
-                x, y =  coords[batch_idx][j]
-                x_start, x_stop = x*s, (x+self.patch_size)*s
-                y_start, y_stop = y*s, (y+self.patch_size)*s
-                counts_sim[x_start:x_stop, y_start:y_stop] += self.kernel
-                output_sim[:, x_start:x_stop, y_start:y_stop] += main_pred[j] * self.kernel
+                output_sim[:, x_start:x_stop, y_start:y_stop] += main_pred_sim[j] * self.kernel
                 
         # normalize the accumulated predictions
         counts = torch.unsqueeze(counts, dim = 0)
@@ -355,12 +394,6 @@ class Inference():
         rep_mask = mask.expand(output.shape[0], -1, -1)
         rep_counts = counts.expand(output.shape[0], -1, -1)
         output[rep_mask] = output[rep_mask] / rep_counts[rep_mask]
-
-        counts_sim = torch.unsqueeze(counts_sim, dim = 0)
-        mask = counts_sim != 0
-
-        rep_mask = mask.expand(output_sim.shape[0], -1, -1)
-        rep_counts = counts_sim.expand(output_sim.shape[0], -1, -1)
         output_sim[rep_mask] = output_sim[rep_mask] / rep_counts[rep_mask]
         
         # aggregate losses
@@ -458,7 +491,8 @@ class Inference():
             # compute forward pass and aggregate outputs
             outputs, losses  = self._infer_sample(batch_data, coords, dims, margins, 
                                                   seg_criterion=seg_criterion, 
-                                                  seg_criterion_2=seg_criterion_2)
+                                                  seg_criterion_2=seg_criterion_2,
+                                                  compare_dates = self.compare_dates)
             output, output_sim = outputs
             (seg_loss, valid_px), (seg_bin_loss, valid_bin_px), (seg_loss_sim, valid_px_sim), (seg_bin_loss_sim, valid_bin_px_sim), feature_loss = losses
             # store validation losses
@@ -478,10 +512,11 @@ class Inference():
             # compute hard predictions and update confusion matrix
             output = output.numpy()
             output_sim = output_sim.numpy()
-            output_hard, output_hard_2, output_hard_1 = self._get_decisions(actv=output, 
-                                                                            target_data=target_data)
-            output_hard_sim, output_hard_2_sim, output_hard_1_sim = self._get_decisions(actv=output_sim, 
-                                                                            target_data=target_data)
+            hard, hard_sim = self._get_decisions(actv=output, 
+                                                    actv_sim=output_sim,
+                                                    target_data=target_data)
+            output_hard, output_hard_2, output_hard_1 = hard
+            output_hard_sim, output_hard_2_sim, output_hard_1_sim = hard_sim
 
             
             # restore nodata values found in the inputs

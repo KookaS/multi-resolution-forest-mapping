@@ -16,7 +16,7 @@ def show_training_losses(fn, hierarchical = False):
     # Read metrics
     d = torch.load(fn, map_location='cpu')
     args = d['args']
-    print(args)
+    # print(args)
 
     mk = 'o'
     total_color = 'dodgerblue'

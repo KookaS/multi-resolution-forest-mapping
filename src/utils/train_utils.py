@@ -28,13 +28,10 @@ def fit(model, device, dataloader, optimizer, n_batches, seg_criterion, seg_crit
     dump_period = 100 # period (in number of batches) for printing running loss
 
     # train batch by batch
-    
     progress_bar = tqdm(enumerate(dataloader), total=n_batches)
     for batch_idx, data in progress_bar:    
         total_loss = torch.tensor([0.], requires_grad=True, device=device)
         inputs, target = data
-
-        # print('GENERATING FAKE IMAGE')
         inputs_sim = []
         for input in inputs:
             if (input.shape[1] == 3):

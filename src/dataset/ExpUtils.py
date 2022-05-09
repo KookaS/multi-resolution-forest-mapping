@@ -5,10 +5,13 @@ import os
 ############## Constants and datasource-specific parameters ###################
 
 # means and standard deviations
+# torchvision.transforms.functional.rgb_to_grayscale: GRAY = R * 299/1000 + G * 587/1000 + B * 114/1000
 MEANS = {'SI2017': [ 98.01336916, 106.46617234, 93.43728537], 
+        'SI1946': [ 102.453491075], 
         'ALTI' : 1878.01851825}
 
 STDS = {'SI2017': [54.22041366, 52.69225063, 46.55903685], 
+        'SI1946': [ 52.449985005], 
         'ALTI' : 1434.79671951}
 
 # nodata value
@@ -16,6 +19,7 @@ I_NODATA_VAL = 255 #nodata value for integer arrays/rasters
 F_NODATA_VAL = -1 #nodata value for float arrays/rasters
 
 NODATA_VAL = {'SI2017': None,
+                'SI1946': None,
                 'TLM4c' : None,
                 'TLM5c' : None,
                 'ALTI' : None,
@@ -25,6 +29,7 @@ NODATA_VAL = {'SI2017': None,
 
 # operators to use to check nodata
 NODATA_CHECK_OPERATOR = {'SI2017': ['all', 'all'], # operators used to skip a training patch
+                        'SI1946': ['all', 'all'],
                         'ALTI': ['all', 'all'],
                         'TLM4c': 'any',
                         'TLM5c': 'any'
@@ -32,10 +37,11 @@ NODATA_CHECK_OPERATOR = {'SI2017': ['all', 'all'], # operators used to skip a tr
 GET_OPERATOR = {'any': np.any, 'all': np.all}
 
 # relative resolution of the datasources
-RELATIVE_RESOLUTION = {'SI2017': 4, 'ALTI': 2, 'TLM4c': 1, 'TLM5c': 1}
+# TODO:
+RELATIVE_RESOLUTION = {'SI2017': 4, 'ALTI': 2, 'SI1946': 2, 'TLM4c': 1, 'TLM5c': 1}
 
 # number of channels
-CHANNELS = {'SI2017': 3, 'ALTI' : 1}
+CHANNELS = {'SI2017': 3, 'ALTI' : 1, 'SI1946': 1}
 
 # class names
 CLASS_NAMES = {'PresenceOfForest' : ['NF', 'F'], 'TLM4c': ['NF', 'OF', 'CF', 'SF'], 
@@ -125,6 +131,7 @@ CLASS_FREQUENCIES = {
 # methods to extract the tile number from the filename
 default_tilenum_extractor = lambda x: os.path.splitext('_'.join(os.path.basename(x).split('_')[-2:]))[0]
 TILENUM_EXTRACTOR = {'SI2017': lambda x: '_'.join(os.path.basename(x).split('_')[2:4]),
+                    'SI1946': lambda x: '_'.join(os.path.basename(x).split('_')[2:4]),
                     'ALTI': default_tilenum_extractor,
                     'TLM4c': default_tilenum_extractor,
                     'TLM5c': default_tilenum_extractor}
@@ -152,7 +159,7 @@ class ExpUtils:
         # Get methods and parameters corresponding to input and target sources
         self.n_input_sources = len(input_sources)
 
-        self.input_channels = [CHANNELS[source] for source in input_sources]
+        self.input_channels = {source:CHANNELS[source] for source in input_sources}
 
         self.tilenum_extractor = [TILENUM_EXTRACTOR[source] for source in input_sources + [target_source]]
 
@@ -192,14 +199,18 @@ class ExpUtils:
                 self.n_classes_1 =  N_CLASSES[target_1]
                 self.class_names['seg_1'] = CLASS_NAMES[target_1]
                 self.class_freq['seg_1'] = CLASS_FREQUENCIES[target_1]
+                self.class_names['seg_1_sim'] = CLASS_NAMES[target_1]
+                self.class_freq['seg_1_sim'] = CLASS_FREQUENCIES[target_1]
                 self.colormap_1 = COLORMAP[target_1]
                 self.suffix_1 = '_ForestType'
         else:
             target = target_source
         self.n_classes = N_CLASSES[target] 
         self.class_freq['seg'] = CLASS_FREQUENCIES[target]
+        self.class_freq['seg_sim'] = CLASS_FREQUENCIES[target]
         self.colormap = COLORMAP[target]
         self.class_names['seg'] = CLASS_NAMES[target]
+        self.class_names['seg_sim'] = CLASS_NAMES[target]
         self.decision_func = self.argmax_decision
                     
         # setup binary output
@@ -208,6 +219,7 @@ class ExpUtils:
             target_2 = 'PresenceOfForest'
             self.suffix_2 = '_2c'
             self.class_names['seg_2'] = CLASS_NAMES[target_2]
+            self.class_names['seg_2_sim'] = CLASS_NAMES[target_2]
             self.colormap_2 = COLORMAP[target_2]
             self.n_classes_2 = 2
             if decision == 'f':
@@ -217,6 +229,7 @@ class ExpUtils:
             else:
                 # the binary prediction is supervised (first level of the decision tree)
                 self.class_freq['seg_2'] = CLASS_FREQUENCIES['PresenceOfForest']
+                self.class_freq['seg_2_sim'] = CLASS_FREQUENCIES['PresenceOfForest']
                 self.decision_func_2 = self.binary_decision
         else: # the model has only one output corresponding to binary forest/non-forest prediction
             self.decision_func_2 = None
@@ -226,7 +239,7 @@ class ExpUtils:
             # +1 for the binary task
             self.output_channels = self.n_classes_1 + 1 #self.n_classes_2
         else:
-            self.output_channels = self.n_classes 
+            self.output_channels = self.n_classes
 
         
 

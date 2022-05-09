@@ -45,6 +45,13 @@ class StreamSingleOutputTrainingDataset(IterableDataset):
     def _create_file_list(self, input_fns, target_fns, **kwargs):
         """Create an file array with one sample per row"""
         # check dimensions of input_fns
+        if not input_fns.all():
+            raise ValueError('input_fns is not defined.'\
+                            'It should in the csv be `input`' )
+        if not target_fns.all():
+            raise ValueError('target_fns is not defined.'\
+                            'It should in the csv be `target`' )
+                            
         if input_fns.ndim == 1:
             self.n_inputs = 1
             self.input_fns = np.expand_dims(input_fns, 0)

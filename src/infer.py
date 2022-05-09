@@ -16,7 +16,7 @@ def get_parser():
             'input imagery and targets and optionally which neighbour_group (i.e. mosaic) each '
             'tile is in.')
     parser.add_argument('--input_sources', type=str, nargs='+', default=['SI2017', 'ALTI'],
-            choices = ['SI2017', 'ALTI'],
+            choices = ['SI2017', 'ALTI', 'SI1946'],
             help='Source of inputs. Order matters. Example: --input_sources SI2017 ALTI')
     parser.add_argument('--target_source', type=str, nargs='?', default=['TLM4c'],
             choices = ['TLM4c', 'TLM5c'],
@@ -38,6 +38,8 @@ def get_parser():
     parser.add_argument('--save_error_map', action="store_true",
         help='Flag that enables saving prediction error maps.')
     parser.add_argument('--evaluate', action="store_true", help='Flag that enables computing metrics')
+    parser.add_argument('--compare_dates', action="store_true",
+        help='Compare images from 1946 and 2017')
     
     return parser
 
@@ -125,23 +127,23 @@ def infer(args):
     # Set model architecture
     decoder_channels = (256, 128, 64, 32)
     upsample = (True, True, True, False)
-    if n_input_sources > 1:
-        # 2 input modalities 
-        aux_in_channels = exp_utils.input_channels[1] 
+    if 'ALTI' in args.input_sources:
+        # 2 input modalities
+        aux_in_channels = exp_utils.input_channels['ALTI']
         aux_in_position = 1
     else:
         # 1 input modality
         aux_in_channels = None
         aux_in_position = None
     # Create model
-    model = Unet(encoder_depth=4, 
-                    decoder_channels=decoder_channels,
-                    in_channels = exp_utils.input_channels[0], 
-                    classes = exp_utils.output_channels,
-                    upsample = upsample,
-                    aux_in_channels = aux_in_channels,
-                    aux_in_position = aux_in_position)
-
+    model = Unet(encoder_depth=4,
+                decoder_channels=decoder_channels,
+                in_channels=exp_utils.input_channels,
+                classes=exp_utils.output_channels,
+                upsample=upsample,
+                aux_in_channels=aux_in_channels,
+                aux_in_position=aux_in_position,
+                input_sources=args.input_sources)
 
     model.load_state_dict(model_obj['model'])
     model = model.to(device)
@@ -151,7 +153,7 @@ def infer(args):
     inference = utils.Inference(model, args.csv_fn, exp_utils, output_dir = output_dir, 
                                         evaluate = args.evaluate, save_hard = args.save_hard, save_soft = args.save_soft, 
                                         save_error_map = args.save_error_map, batch_size = args.batch_size, 
-                                        num_workers = args.num_workers, device = device, decision = decision)
+                                        num_workers = args.num_workers, device = device, decision = decision, compare_dates = args.compare_dates)
 
     result = inference.infer()
 

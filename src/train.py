@@ -19,7 +19,8 @@ def get_parser():
     parser.add_argument('--input_sources', type=str, nargs='*', default=['SI2017', 'ALTI'],
             choices = ['SI2017', 'ALTI'], \
             help='Source of inputs. Order matters.'\
-                'Example: --input_sources SI2017 ALTI')
+                'Example: --input_sources SI2017 ALTI'\
+                'In the csv file, you need to use input_0, input_1 for two inputs, and input for a single input')
     parser.add_argument('--target_source', type=str, default='TLM5c',
             choices = ['TLM4c', 'TLM5c'], \
             help='Source of targets. TLMxc: SwissTLM3D forest targets with x classes')
@@ -66,7 +67,7 @@ class DebugArgs():
     """Class for setting arguments directly in this python script instead of through a command line"""
     def __init__(self):
         self.debug = True
-        self.input_sources = ['SI2017', 'ALTI']
+        self.input_sources = ['SI2017']
         self.target_source = 'TLM5c'
         self.use_subset = False
         self.batch_size = 16
@@ -102,7 +103,7 @@ def train(args):
     if os.path.isfile(model_fn):
         if os.path.isfile(log_fn):
             if args.resume_training:
-                print('Resuming the training process, {} and {} will be updated.'.format(log_fn, model_fn))
+                print('Reundersample_validationsuming the training process, {} and {} will be updated.'.format(log_fn, model_fn))
             else:
                 print('WARNING: Training from scratch, {} and {} will be overwritten'.format(log_fn, model_fn))
                 if not args.no_user_input:
@@ -147,7 +148,7 @@ def train(args):
     if args.undersample_validation < 1:
         raise ValueError('undersample_validation factor should be greater than 1')
     if args.debug:
-        args.undersample_validation = 20
+        args.undersample_validation = 100
         print('Debug mode: only 1/{}th of the validation set will be used'.format(args.undersample_validation))
         
     exp_utils = ExpUtils(args.input_sources, args.target_source, decision = args.decision)
@@ -239,14 +240,13 @@ def train(args):
 
     # for debugging: use subset of training set
     if args.debug:
-        n_samples = 200
+        n_samples = 20
         input_fns = input_fns[:n_samples]
         
         target_fns = target_fns[:n_samples]
         if negatives_mask is not None:
             negatives_mask = negatives_mask[:n_samples]
     
-    # TODO [:50] for input_fns, target_fns, negatives_mask
     dataset = StreamSingleOutputTrainingDataset(
     input_fns=input_fns, 
     target_fns=target_fns, 
@@ -291,9 +291,9 @@ def train(args):
     # Set model architecture
     decoder_channels = (256, 128, 64, 32)
     upsample = (True, True, True, False)
-    if n_input_sources > 1:
+    if 'ALTI' in args.input_sources:
         # 2 input modalities
-        aux_in_channels = exp_utils.input_channels[1]
+        aux_in_channels = exp_utils.input_channels['ALTI']
         aux_in_position = 1
     else:
         # 1 input modality
@@ -328,13 +328,14 @@ def train(args):
     else:
         seg_criterion_2 = None
 
-    model = Unet(encoder_depth=4, 
+    model = Unet(encoder_depth=4,
                 decoder_channels=decoder_channels,
-                in_channels=exp_utils.input_channels[0],
+                in_channels=exp_utils.input_channels,
                 classes=exp_utils.output_channels,
                 upsample=upsample,
                 aux_in_channels=aux_in_channels,
-                aux_in_position=aux_in_position)
+                aux_in_position=aux_in_position,
+                input_sources=args.input_sources)
 
     model = model.to(device)
     # encoder = encoder.to(device)
@@ -455,6 +456,7 @@ def train(args):
             print('Validation')
             results = inference.infer(seg_criterion, 
                                         seg_criterion_2)
+            
             cm, report, losses = results
             val_losses, val_losses_sim, val_loss_feature = losses
             # collect individual validation losses and compute total validation loss
@@ -499,7 +501,7 @@ def train(args):
             save_dict['val_cms'].append(deepcopy(cm)) # deepcopy is necessary
             save_dict['val_epochs'].append(epoch)
             save_dict['val_total_losses'].append(val_total_loss)
-            save_dict['val_losses'].append(val_loss)
+            save_dict['val_losses'].append(val_losses)
             save_dict['val_losses_sim'].append(val_loss_sim)
             save_dict['val_losses_feature'].append(val_loss_feature)
             if args.decision == 'h':
