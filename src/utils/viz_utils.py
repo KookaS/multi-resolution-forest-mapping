@@ -67,7 +67,7 @@ def show_training_losses(fn, hierarchical = False):
             val_bin_losses = d['val_binary_losses']
             plt.plot(val_epochs, val_bin_losses, val_ls+mk, label='binary loss (validation)', color=bin_color, fillstyle = val_fs)  
             val_bin_losses_sim = d['val_binary_losses_sim']
-            plt.plot(val_epochs, val_bin_losses_sim, val_ls+mk, label='binary loss (validation)', color=bin_color_sim, fillstyle = val_fs)           
+            plt.plot(val_epochs, val_bin_losses_sim, val_ls+mk, label='binary loss sim (validation)', color=bin_color_sim, fillstyle = val_fs)           
     proportion_neg_samples = d['proportion_negative_samples']
     plt.plot(proportion_neg_samples, train_ls+'D', label='proportion of negative samples (training)', color='grey', fillstyle = train_fs)
     plt.xlabel('epoch')

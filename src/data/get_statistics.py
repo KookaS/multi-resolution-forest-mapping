@@ -11,6 +11,7 @@ def get_fn_list(csv_fn):
     with open(csv_fn, 'r') as f_csv:
         reader = csv.reader(f_csv)
         fn_list = list(reader)
+        print(fn_list)
     return [fn[0] for fn in fn_list]
 
 def get_image_statistics(fn_list, p_pix):
@@ -85,13 +86,15 @@ def get_target_statistics(fn_list, p_pix, n_classes, non_empty_only = False):
 
 if __name__ == "__main__":
     
-    source = 'TH'
-    train_fn_list_fn = os.path.join('data', 'csv', source + '_train.csv')
-    val_fn_list_fn = os.path.join('data', 'csv', source + '_val.csv')
-    train_fn_list = get_fn_list(train_fn_list_fn)
+    source = 'SI1946'
+    # train_fn_list_fn = os.path.join('data', 'csv', source + '_train.csv')
+    test_fn_list_fn = os.path.join('src', 'data', 'csv', source + '_test.csv')
+    val_fn_list_fn = os.path.join('src', 'data', 'csv', source + '_val.csv')
+    # train_fn_list = get_fn_list(train_fn_list_fn)
+    test_fn_list = get_fn_list(test_fn_list_fn)
     val_fn_list = get_fn_list(val_fn_list_fn)
     p_pix = 1e-5 # proportion of pixels used per image
-    get_image_statistics(train_fn_list + val_fn_list, p_pix)
+    get_image_statistics(test_fn_list + val_fn_list, p_pix)
     
     ### target statistics
     # fn_list = get_fn_list('data/TLM5c_train.csv')

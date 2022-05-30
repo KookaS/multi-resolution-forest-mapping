@@ -1,1 +1,1 @@
-from .resnet import ResNetEncoder, ResNetEncoderBody, ResNetEncoderHead
+from .resnet import ResNetEncoder

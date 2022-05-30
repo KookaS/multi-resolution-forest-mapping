@@ -12,7 +12,7 @@ class StreamSingleOutputTrainingDataset(IterableDataset):
     """
 
     def __init__(self, input_fns, target_fns, exp_utils, n_neg_samples = None,
-                negatives_mask = None, verbose=False, **kwargs):
+                negatives_mask = None, verbose=False, input_keys=[], **kwargs):
         """
         Args:
             - input_fns (ndarray of str): array of dimension (n_input_sources, n_samples) or (n_samples,), containing 
@@ -31,6 +31,7 @@ class StreamSingleOutputTrainingDataset(IterableDataset):
         self.exp_utils = exp_utils
         self.verbose = verbose
         self.negatives_mask = negatives_mask
+        self.input_keys = input_keys
         
         self.n_fns_all = len(self.fns)
 
@@ -127,11 +128,11 @@ class StreamSingleOutputTrainingDataset(IterableDataset):
         for idx in range(lower_idx, upper_idx):
             yield self.fns[idx]
 
-    def _extract_multi_patch(self, data, scales, x, xstop, y, ystop):
+    def _extract_multi_patch(self, data, scales, x, xstop, y, ystop, input_keys):
         """
         Extract a patch from multisource data given the relative scales of the sources and boundary coordinates
         """
-        return [self._extract_patch(data[i],scales[i], x, xstop, y, ystop) for i in range(len(data))]
+        return [self._extract_patch(data[i],scales[key], x, xstop, y, ystop) for i, key in enumerate(input_keys)]
 
     def _extract_patch(self, data, scale, x, xstop, y, ystop):
         return data[y*scale:ystop*scale, x*scale:xstop*scale]
@@ -153,8 +154,6 @@ class StreamSingleOutputTrainingDataset(IterableDataset):
         """
 
         input_data, target_data = data
-        # print('input_data: ', len(input_data))
-        # print('target_data: ', len(target_data))
         # find the coarsest data source
         height, width = target_data.shape[:2] 
         height = height // self.exp_utils.target_scale
@@ -171,7 +170,7 @@ class StreamSingleOutputTrainingDataset(IterableDataset):
             xstop = x + self.patch_size
             ystop = y + self.patch_size
             # extract input patch
-            input_patches = self._extract_multi_patch(input_data, self.exp_utils.input_scales, x, xstop, y, ystop)
+            input_patches = self._extract_multi_patch(input_data, self.exp_utils.input_scales, x, xstop, y, ystop, self.input_keys)
             # extract target patch
             target_patch = self._extract_patch(target_data, self.exp_utils.target_scale, x, xstop, y, ystop)
         except IndexError:
@@ -216,11 +215,6 @@ class StreamSingleOutputTrainingDataset(IterableDataset):
                 img_data[i] = np.moveaxis(fp.read(), (1, 2, 0), (0, 1, 2))
             target_data = target_fp.read(1)
 
-            # img_sim = img_data.copy()
-            # for i, fp in enumerate(img_fp):  
-            #     if (img_sim[i].shape == (4000, 4000, 3)):
-            #         img_sim[i] = self._generate_simulated_image(img=img_sim[i])
-            #         print(img_sim[i].shape, img_data[i].shape)
         except RasterioError as e:
             print("WARNING: Error reading file, skipping to the next file")
             return None
@@ -246,15 +240,9 @@ class StreamSingleOutputTrainingDataset(IterableDataset):
             if code == 1: #IndexError or invalid patch
                 continue #continue to next patch
             yield data_patch
-            # data_patch_sim, num_skipped_patches_sim, code, _ = self._generate_patch(data_sim, num_skipped_patches, None)
-            # if code == 1: #IndexError or invalid patch
-            #     continue #continue to next patch
-            # yield data_patch_sim
 
         if num_skipped_patches>0 and self.verbose:
             print("We skipped %d patches on %s" % (num_skipped_patches, fns[0]))
-        # if num_skipped_patches_sim>0 and self.verbose:
-        #     print("We skipped %d sim patches on %s" % (num_skipped_patches_sim, fns[0]))
 
     def _stream_patches(self):
         """Generator returning patches from the samples the worker calling this function is assigned to"""
@@ -266,11 +254,4 @@ class StreamSingleOutputTrainingDataset(IterableDataset):
         if self.verbose:
             print("Creating a new StreamTrainingDataset iterator")
         return iter(self._stream_patches())
-
-    def _generate_simulated_image(self, img: np.array, resolution_original: float = 0.25, resolution_simulated: float = 1.0):
-        x,y,ch = img.shape # (x, y, rgb)
-        x,y,ch = (int(x * resolution_original / resolution_simulated), int(y * resolution_original / resolution_simulated), ch)
-        res = cv2.resize(img, dsize=(x, y), interpolation=cv2.INTER_CUBIC)
-        gray = cv2.cvtColor(res, cv2.COLOR_BGR2GRAY)
-        return gray.reshape(x,y,1)
    

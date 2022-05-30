@@ -7,6 +7,8 @@ import rasterio.warp
 from rasterio.windows import Window
 import torch.nn.functional as f
 
+import time
+
 from torch.utils.data.dataset import Dataset
 
 class InferenceDataset(Dataset):
@@ -20,7 +22,7 @@ class InferenceDataset(Dataset):
     """
 
     def __init__(self, input_vrt_fns, exp_utils, batch_size = 16, target_vrt_fn = None, 
-                 input_nodata_val = None, target_nodata_val = None):
+                 input_nodata_val = None, target_nodata_val = None, input_keys = [], target_keys = []):
         """
         Args:
             - image_fn (1-D ndarray of str): path to the files to sample inputs from (files from each input source 
@@ -58,6 +60,9 @@ class InferenceDataset(Dataset):
         
         self.input_nodata_val = input_nodata_val
         self.target_nodata_val = target_nodata_val
+        
+        self.input_keys = input_keys
+        self.target_keys = target_keys
 
     
     def _get_patch_coordinates(self, height, width): 
@@ -86,11 +91,11 @@ class InferenceDataset(Dataset):
         for i, image_data in enumerate(data):
             
             op1, _ = self.exp_utils.input_nodata_check_operator[i] 
-            #if self.exp_utils.input_nodata_val[i] is not None: 
             if self.input_nodata_val[i] is not None:
                 check_orig = op1(image_data[top_margin:image_data.shape[0]-bottom_margin, left_margin:image_data.shape[1]-right_margin] == self.input_nodata_val[i], axis = -1)
                 # downscale and combine with current mask
-                s = self.input_scales[i] // self.target_scale
+                index = 0   # for one element only
+                s = self.input_scales[self.input_keys[index]] // self.target_scale
                 if s == 0:
                     raise RuntimeError('At least one of the inputs is coarser that the target, this is curently not '
                                         'supported.')
@@ -158,14 +163,14 @@ class InferenceDataset(Dataset):
         #### read tiles
         
         image_data = [None] * self.n_inputs
-        for i in range(self.n_inputs):
-            s = self.input_scales[i]
+        for i, input_key in enumerate(self.input_keys):
+            
+            s = self.input_scales[input_key]
             data, (height, width), margins = self._read_tile(self.input_vrt[i], 
                                                             self.input_fns[i][idx], 
                                                             max_margin=self.tile_margin*s,
                                                             squeeze = False)
             # data = np.moveaxis(data, 0, -1) # the preprocessing function will swap axis back
-            # check the size of the image
             height_i = height // s
             width_i = width // s
             margins_i = [m/s for m in margins]
@@ -195,13 +200,13 @@ class InferenceDataset(Dataset):
                     raise RuntimeError('The dimensions of the inputs and targets do not match: '
                                         '(height={}, width={}, margins={}) for the inputs '
                                         'v.s (height={}, width={}, margins={}) for the target'
-                                        .format(tile_height, tile_width, ','.join(tile_margins),
-                                                height_i, width_i, ','.join(margins_i)))
+                                        .format(tile_height, tile_width, ','.join(str(tile_margins)),
+                                                height_i, width_i, ','.join(str(margins_i))))
         else:
             target_data = None
         
               
-        #### build batches        
+        #### build batches
         input_nodata_mask = self._get_input_nodata_mask(image_data, tile_height, tile_width, tile_margins)
         coords = self._get_patch_coordinates(tile_height, tile_width)
         num_patches = coords.shape[0]
@@ -214,7 +219,7 @@ class InferenceDataset(Dataset):
         # image_data = self.exp_utils.preprocess_inputs(image_data)
         for i in range(self.n_inputs):
             input_batches[i] = self._build_batch(self.exp_utils.preprocess_input(image_data[i], i), coords, 
-                                                 self.input_scales[i], num_batches, remainder)
+                                                 self.input_scales[self.input_keys[i]], num_batches, remainder)
 
         # build target batches
         if self.sample_target:

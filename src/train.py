@@ -94,7 +94,6 @@ class DebugArgs():
 ########################################################################################################################
 
 def train(args):
-
     exp_name = os.path.basename(args.output_dir)
     log_fn = os.path.join(args.output_dir, 'training','{}_metrics.pt'.format(exp_name))
     model_fn = os.path.join(args.output_dir, 'training', '{}_model.pt'.format(exp_name))
@@ -248,12 +247,13 @@ def train(args):
             negatives_mask = negatives_mask[:n_samples]
     
     dataset = StreamSingleOutputTrainingDataset(
-    input_fns=input_fns, 
+    input_fns=input_fns,
     target_fns=target_fns, 
     exp_utils = exp_utils,
     n_neg_samples = None,
     negatives_mask= negatives_mask,
-    verbose=False
+    verbose=False,
+    input_keys = args.input_sources
     )
 
     # create array containing the number of negatives samples to be selected for each epoch
@@ -444,6 +444,8 @@ def train(args):
                 lambda_bin = args.lambda_bin,
                 lambda_feature = args.lambda_feature
             )
+
+        print(training_loss)
 
         # debug
         new_mem = psutil.virtual_memory().used/1e6

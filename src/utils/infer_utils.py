@@ -127,31 +127,39 @@ class Inference():
     def _get_vrt_from_df(self, df):
         """Build virtual mosaic rasters from files listed in dataframe df"""
         #### inputs ###########################################################
-        self.input_vrt_fns = [None]*self.n_inputs
-        self.input_vrt_nodata_val = [None]*self.n_inputs
+
+        keys = {key:1 for key in self.exp_utils.input_channels.keys()}
+        if 'ALTI' in self.exp_utils.input_channels.keys():
+            keys['SI2017'] = 2
+            del keys['ALTI']
+
+        self.input_vrt_fns = {input:[None]*keys[input] for input in self.exp_utils.input_channels.keys()}
+        self.input_vrt_nodata_val = {input:[None]*keys[input] for input in self.exp_utils.input_channels.keys()}
         for i, col_name in enumerate(self.input_col_names):
             fns = df[col_name]
             vrt_fn = os.path.join(self.tmp_dir, '{}.vrt'.format(col_name))
+            key = [input for input in self.exp_utils.input_channels.keys() if input[2:] in fns[0]][0]
             if self.exp_utils.input_nodata_val[i] is None:
                 # read the first tile just to know the data type:
                 with rasterio.open(fns[0], 'r') as f_tile:
                     dtype = f_tile.profile['dtype']
                 if dtype == 'uint8':
-                    self.input_vrt_nodata_val[i] = I_NODATA_VAL
+                    self.input_vrt_nodata_val[key] = [I_NODATA_VAL]
                 elif dtype.startswith('uint'):
-                    self.input_vrt_nodata_val[i] = I_NODATA_VAL
+                    self.input_vrt_nodata_val[key] = [I_NODATA_VAL]
                     print('WARNING: nodata value for {} set to {}'.format(col_name, I_NODATA_VAL))
                 else:
                     # the min and max float32 values are not handled by GDAL, using value -1 instead
-                    self.input_vrt_nodata_val[i] = F_NODATA_VAL
+                    self.input_vrt_nodata_val[key] = [F_NODATA_VAL]
                     print('WARNING: nodata value for {} set to {}'.format(col_name, F_NODATA_VAL)) 
             else:
-                self.input_vrt_nodata_val[i] = self.exp_utils.input_nodata_val[i]
+                self.input_vrt_nodata_val[key] = self.exp_utils.input_nodata_val[i]
+
             gdal.BuildVRT(  vrt_fn, 
                             list(fns),
-                            VRTNodata=self.input_vrt_nodata_val[i],
-                            options = ['overwrite'])   
-            self.input_vrt_fns[i] = vrt_fn
+                            VRTNodata=self.input_vrt_nodata_val[key][0],
+                            options = ['overwrite']) 
+            self.input_vrt_fns[key] = [vrt_fn]
         
         self.target_vrt_fn = None
         self.target_vrt_nodata_val = None
@@ -276,7 +284,7 @@ class Inference():
         return reports
 
     def _infer_sample(self, data, coords, dims, margins, 
-                      seg_criterion = None, seg_criterion_2 = None, compare_dates = False):
+                      seg_criterion = None, seg_criterion_2 = None, data_low_res = None):
         """Performs inference on one (multi-source) input accessed through dataset ds, with multiple outputs."""
 
         # compute dimensions of the output
@@ -304,16 +312,10 @@ class Inference():
         # iterate over batches of small patches
         for batch_idx in range(num_batches):
             # get the prediction for the batch
-            if (compare_dates):
-                input_data = []
-                input_data_sim = []
-                for data in inputs:
-                    if (data[batch_idx].shape[1] == 3):
-                        input_data.append(data[batch_idx])
-                    else:
-                        input_data_sim.append(data[batch_idx])
-
-                print(input_data.shape, input_data_sim.shape)
+            if data_low_res is not None:
+                input_data = [data[batch_idx].to(self.device) for data in inputs]
+                inputs_low_res, _ = data_low_res
+                input_data_sim = [data[batch_idx].to(self.device) for data in inputs_low_res]
             else:
                 input_data = [data[batch_idx].to(self.device) for data in inputs]
                 input_data_sim = []
@@ -336,8 +338,8 @@ class Inference():
                     # RMSE of feature spaces
                     feature_criterion = nn.MSELoss()
                     feature_loss=0
+                    # match the last element of the feature space
                     # first output in feature space does not match dimensions torch.Size([8, 64, 256, 256]) vs torch.Size([8, 64, 128, 128])
-                    # TODO [1:] or [-1]
                     for (f, fs) in zip(feature_space[-1], feature_space_sim[-1]):
                         feature_loss += torch.sqrt(feature_criterion(f, fs))
                     feature_losses[batch_idx] = feature_loss.item()
@@ -356,23 +358,20 @@ class Inference():
                             seg_actv = t_main_actv
                             seg_actv_sim = t_main_actv_sim
                             seg_target = target_data #.squeeze(1)
+
                         # main loss
-
-                        # if torch.isnan(torch.sum(seg_actv)) or torch.isinf(torch.sum(seg_actv)):
-                        #     print('invalid input detected at iteration ')
-                        # if torch.isnan(torch.sum(seg_target)) or torch.isinf(torch.sum(seg_target)):
-                        #     print('invalid input detected at iteration ')
-
-                        # print('seg_criterion')
-                        # print('seg_actv', seg_actv)
-                        # print(seg_criterion(seg_actv, seg_target).item())
-                        # print('seg_actv_sim', seg_actv_sim)
-                        # print(seg_criterion(seg_actv_sim, seg_target).item())
-
-
                         seg_mask = seg_target != seg_criterion.ignore_index
-                        seg_losses[batch_idx] = seg_criterion(seg_actv, seg_target).item()
-                        seg_losses_sim[batch_idx] = seg_criterion(seg_actv_sim, seg_target).item()
+                        loss = seg_criterion(seg_actv, seg_target)
+                        if torch.isnan(loss): 
+                            seg_losses[batch_idx] = 0
+                        else:
+                            seg_losses[batch_idx] = loss.item()
+
+                        loss = seg_criterion(seg_actv_sim, seg_target)
+                        if torch.isnan(loss): 
+                            seg_losses_sim[batch_idx] = 0
+                        else:
+                            seg_losses_sim[batch_idx] = loss.item()
                         valid_px_list[batch_idx] = torch.sum(seg_mask).item()
                         
                 # move predictions to cpu
@@ -427,9 +426,8 @@ class Inference():
         
         return (output, output_sim), ((seg_loss, total_valid_px), (seg_bin_loss, total_valid_bin_px), 
                 (seg_loss_sim, total_valid_px_sim), (seg_bin_loss_sim, total_valid_bin_px_sim), feature_loss)
-    
-    @staticmethod            
-    def _aggregate_batch_losses(loss_list, valid_px_list):
+             
+    def _aggregate_batch_losses(self, loss_list, valid_px_list):
         total_valid_px = sum(valid_px_list)
         if total_valid_px > 0:
             seg_loss = np.average(loss_list, axis = 0, weights = valid_px_list)
@@ -454,8 +452,8 @@ class Inference():
             self._get_vrt_from_df(df)
         # set the cumulative confusion matrix to 0
         if self.evaluate:
-            self._reset_cm()   
-            feature_losses = [0] * len(df)  
+            self._reset_cm()
+            feature_losses = [0] * len(df)
             if seg_criterion is not None:
                 seg_losses = [0] * len(df)
                 valid_px_list = [0] * len(df)
@@ -468,31 +466,47 @@ class Inference():
                 valid_px_bin_list_sim = [0] * len(df)
                 
         #create dataset
-        ds = InferenceDataset(self.input_vrt_fns, 
+        target_keys = self.exp_utils.target_scale
+        iteration_keys = [key for key in self.exp_utils.input_channels.keys() if key not in ['ALTI']]
+        if len(iteration_keys) < 1:
+            raise ValueError('Not enough inputs valid for dataloards iterations')
+
+        ds = {input: InferenceDataset(self.input_vrt_fns[input], 
                               exp_utils=self.exp_utils, 
-                              batch_size = self.batch_size, 
+                              batch_size = self.batch_size,
                               target_vrt_fn = self.target_vrt_fn,
-                              input_nodata_val = self.input_vrt_nodata_val,
-                              target_nodata_val = self.target_vrt_nodata_val)
-        dataloader = torch.utils.data.DataLoader(
-            ds,
+                              input_nodata_val = self.input_vrt_nodata_val[input],
+                              target_nodata_val = self.target_vrt_nodata_val,
+                              input_keys = [input],
+                              target_keys=[target_keys]) for input in iteration_keys}
+
+        dataloaders = [torch.utils.data.DataLoader(
+            ds[input],
             batch_size=None, # manual batching to obtain batches with patches from the same image
             num_workers=self.num_workers,
             pin_memory=False,
             collate_fn = lambda x : x
-        )
-        # iterate over dataset (tile by tile) 
-        progress_bar = tqdm(zip(dataloader, df.iterrows()), total=len(df))
-        for (batch_data, target_data, coords, dims, margins, input_nodata_mask), (tile_idx, fns) in progress_bar:
+        ) for input in iteration_keys]
+        # iterate over dataset (tile by tile)
+
+        progress_bar = tqdm(zip(df.iterrows(), *dataloaders), total=len(df))
+        for progress_elements in progress_bar:
+            (tile_idx, fns), *dataloaders_data = progress_elements
             template_fn = fns.iloc[0]
             tile_num = self.exp_utils.tilenum_extractor[0](template_fn)
             progress_bar.set_postfix_str('Tiles(s): {}'.format(tile_num))
 
             # compute forward pass and aggregate outputs
+            batch_data, batch_data_sim, target_data, coords, dims, margins, input_nodata_mask = None, None, None, None, None, None, None
+            for i, dataloader_data in enumerate(dataloaders_data):
+                if iteration_keys[i] == 'SI2017':
+                    batch_data, target_data, coords, dims, margins, input_nodata_mask = dataloader_data
+                if iteration_keys[i] == 'SI1946':
+                    batch_data_sim, target_data, coords, dims, margins, input_nodata_mask = dataloader_data
             outputs, losses  = self._infer_sample(batch_data, coords, dims, margins, 
-                                                  seg_criterion=seg_criterion, 
-                                                  seg_criterion_2=seg_criterion_2,
-                                                  compare_dates = self.compare_dates)
+                                                seg_criterion=seg_criterion, 
+                                                seg_criterion_2=seg_criterion_2,
+                                                data_low_res = batch_data_sim)
             output, output_sim = outputs
             (seg_loss, valid_px), (seg_bin_loss, valid_bin_px), (seg_loss_sim, valid_px_sim), (seg_bin_loss_sim, valid_bin_px_sim), feature_loss = losses
             # store validation losses
@@ -573,7 +587,7 @@ class Inference():
             # write outputs 
             if self.save_hard or self.save_soft:
                 writer = Writer(self.exp_utils, tile_num, template_fn, 
-                                template_scale = self.exp_utils.input_scales[0], 
+                                template_scale = self.exp_utils.input_scales['SI2017'], 
                                 dest_scale=self.exp_utils.target_scale)
                 # main segmentation output
                 writer.save_seg_result(self.output_dir, 

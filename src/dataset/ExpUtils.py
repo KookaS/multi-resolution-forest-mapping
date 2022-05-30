@@ -5,13 +5,12 @@ import os
 ############## Constants and datasource-specific parameters ###################
 
 # means and standard deviations
-# torchvision.transforms.functional.rgb_to_grayscale: GRAY = R * 299/1000 + G * 587/1000 + B * 114/1000
 MEANS = {'SI2017': [ 98.01336916, 106.46617234, 93.43728537], 
-        'SI1946': [ 102.453491075], 
+        'SI1946': [ 130.75925926], 
         'ALTI' : 1878.01851825}
 
 STDS = {'SI2017': [54.22041366, 52.69225063, 46.55903685], 
-        'SI1946': [ 52.449985005], 
+        'SI1946': [ 35.62340844], 
         'ALTI' : 1434.79671951}
 
 # nodata value
@@ -37,8 +36,7 @@ NODATA_CHECK_OPERATOR = {'SI2017': ['all', 'all'], # operators used to skip a tr
 GET_OPERATOR = {'any': np.any, 'all': np.all}
 
 # relative resolution of the datasources
-# TODO:
-RELATIVE_RESOLUTION = {'SI2017': 4, 'ALTI': 2, 'SI1946': 2, 'TLM4c': 1, 'TLM5c': 1}
+RELATIVE_RESOLUTION = {'SI2017': 4, 'ALTI': 2, 'SI1946': 1, 'TLM4c': 1, 'TLM5c': 1}
 
 # number of channels
 CHANNELS = {'SI2017': 3, 'ALTI' : 1, 'SI1946': 1}
@@ -130,8 +128,8 @@ CLASS_FREQUENCIES = {
 
 # methods to extract the tile number from the filename
 default_tilenum_extractor = lambda x: os.path.splitext('_'.join(os.path.basename(x).split('_')[-2:]))[0]
-TILENUM_EXTRACTOR = {'SI2017': lambda x: '_'.join(os.path.basename(x).split('_')[2:4]),
-                    'SI1946': lambda x: '_'.join(os.path.basename(x).split('_')[2:4]),
+TILENUM_EXTRACTOR = {'SI2017': lambda x: '_'.join(os.path.basename(x).split('_')[3:5]),
+                    'SI1946': lambda x: '_'.join(os.path.basename(x).split('_')[3:5]),
                     'ALTI': default_tilenum_extractor,
                     'TLM4c': default_tilenum_extractor,
                     'TLM5c': default_tilenum_extractor}
@@ -182,9 +180,8 @@ class ExpUtils:
         if any(rem):
             raise RuntimeError('All the pixel sizes should be multiples of the smallest pixel size. Other cases are '
                                 'not supported')
-        scales = [scale//scale_min for scale in scales]
-        self.input_scales = scales[:len(input_sources)]
-        self.target_scale = scales[-1]
+        self.input_scales = {source: RELATIVE_RESOLUTION[source]//scale_min for source in input_sources}
+        self.target_scale = RELATIVE_RESOLUTION[target_source]//scale_min
 
         # setup output(s)
         self.class_names = {}

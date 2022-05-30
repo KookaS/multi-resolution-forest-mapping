@@ -5,6 +5,7 @@ import torch
 from models import Unet
 import utils
 from dataset import ExpUtils
+from torchsummary import summary
 
 
 def get_parser():

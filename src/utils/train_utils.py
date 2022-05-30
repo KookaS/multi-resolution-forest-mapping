@@ -35,7 +35,7 @@ def fit(model, device, dataloader, optimizer, n_batches, seg_criterion, seg_crit
         inputs_sim = []
         for input in inputs:
             if (input.shape[1] == 3):
-                temp = generate_simulated_image(img=input.clone())
+                temp = generate_simulated_image(image=input.clone())
                 inputs_sim.append(temp)
 
         inputs = [d.to(device) for d in inputs]
@@ -53,8 +53,8 @@ def fit(model, device, dataloader, optimizer, n_batches, seg_criterion, seg_crit
         # RMSE of feature spaces
         feature_criterion = nn.MSELoss()
         feature_loss=0
+        # match the last element of the feature space
         # first output in feature space does not match dimensions torch.Size([8, 64, 256, 256]) vs torch.Size([8, 64, 128, 128])
-        # TODO [1:] or [-1]
         for (f, fs) in zip(feature_space[-1], feature_space_sim[-1]):
             feature_loss += torch.sqrt(feature_criterion(f, fs))
         total_loss = total_loss + lambda_feature * feature_loss
@@ -83,8 +83,16 @@ def fit(model, device, dataloader, optimizer, n_batches, seg_criterion, seg_crit
         optimizer.step()
 
         # store current losses
-        losses.append(seg_loss.item())
-        losses_sim.append(seg_loss_sim.item())
+        if torch.isnan(seg_loss): 
+            losses.append(0)
+        else:
+            losses.append(seg_loss.item())
+        
+        if torch.isnan(seg_loss_sim): 
+            losses_sim.append(0)
+        else:
+            losses_sim.append(seg_loss_sim.item())
+        
         if seg_criterion_2 is not None:
             binary_losses.append(bin_seg_loss.item())
             binary_losses_sim.append(bin_seg_loss_sim.item())

@@ -8,8 +8,8 @@ python src/infer.py \
         --save_hard \
         --save_soft \
         --csv_fn /media/data/charrez/multi-resolution-forest-mapping/src/data/csv/SI2017_ALTI_TLM5c_val_viz.csv \
-        --model_fn /media/data/charrez/multi-resolution-forest-mapping/results2/training/results2_model.pt \
-        --output_dir /media/data/charrez/multi-resolution-forest-mapping/results/baseline_hierarchical/inference/epoch_13 \
+        --model_fn /media/data/charrez/multi-resolution-forest-mapping/results4/training/results4_model.pt \
+        --output_dir /media/data/charrez/multi-resolution-forest-mapping/results4/inference/old \
         --evaluate \
         --overwrite \
         # > log.txt

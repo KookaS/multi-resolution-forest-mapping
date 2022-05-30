@@ -1,6 +1,6 @@
 from typing import Dict, List, Optional
 from .decoder import UnetDecoder
-from ..encoders import ResNetEncoder, ResNetEncoderHead, ResNetEncoderBody
+from ..encoders import ResNetEncoder
 from ..base import SegmentationModel
 from ..base import SegmentationHead
 
@@ -44,7 +44,7 @@ class Unet(SegmentationModel):
         
         super().__init__()
         layers, out_channels = self.set_channels(aux_in_channels, aux_in_position, encoder_depth)
-        encoder, encoder_head, encoder_body, decoder, segmentation_head = self._get_model_blocks()
+        encoder, decoder, segmentation_head = self._get_model_blocks()
         
         encoder_aux_in_channels = None
         encoder_aux_in_position = None
@@ -52,37 +52,20 @@ class Unet(SegmentationModel):
             encoder_aux_in_channels = aux_in_channels
             encoder_aux_in_position = aux_in_position
 
-        self.encoder = encoder(in_channels_high_res = in_channels['SI2017'],
+        print(in_channels)
+
+        self.encoder = encoder(in_channels_high_res = in_channels['SI2017'] or 3,
                         aux_in_channels = encoder_aux_in_channels,
                         out_channels = out_channels,
                         layers = layers,
                         aux_in_position = encoder_aux_in_position,
                         resolution='high')
-        self.encoder_sim = encoder(in_channels_low_res = in_channels['SI1946'],
+        self.encoder_sim = encoder(in_channels_low_res = 1,
                         aux_in_channels = None,
                         out_channels = out_channels,
                         layers = layers,
                         aux_in_position = None,
                         resolution='low')
-        
-        """
-        self.encoder = encoder_head(in_channels_high_res = in_channels,
-                        aux_in_channels = None,
-                        out_channels = out_channels,
-                        layers = layers,
-                        aux_in_position = aux_in_position)
-                        # aux_in_channels = aux_in_channels,
-        self.encoder_sim = encoder_head(in_channels_high_res = in_channels,
-                        aux_in_channels = None,
-                        out_channels = out_channels,
-                        layers = layers,
-                        aux_in_position = 0)
-        self.encoder_body = encoder_body(in_channels_high_res = in_channels,
-                        aux_in_channels = None,
-                        out_channels = out_channels,
-                        layers = layers,
-                        aux_in_position = 0 | aux_in_position ???)
-        """
         
         self.decoder = decoder(
             encoder_channels=self.encoder._out_channels,
@@ -100,7 +83,7 @@ class Unet(SegmentationModel):
         self.initialize()
 
     def _get_model_blocks(self):
-        return ResNetEncoder, ResNetEncoderHead, ResNetEncoderBody, UnetDecoder, SegmentationHead
+        return ResNetEncoder, UnetDecoder, SegmentationHead
 
     def set_channels(self, aux_in_channels, aux_in_position, encoder_depth):
         if (aux_in_channels is None) != (aux_in_position is None):
