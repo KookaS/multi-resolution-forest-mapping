@@ -76,29 +76,31 @@ def fit(model, device, dataloader, optimizer, n_batches, seg_criterion, seg_crit
         # main supervision
         seg_loss = seg_criterion(seg_actv, seg_target)
         seg_loss_sim = seg_criterion(seg_actv_sim, seg_target)
+        total_loss_bar = total_loss.item()
         total_loss = total_loss + seg_loss + seg_loss_sim
+        if torch.isnan(seg_loss): 
+            seg_loss = 0
+        else:
+            seg_loss = seg_loss.item()
+        if torch.isnan(seg_loss_sim): 
+            seg_loss_sim = 0
+        else:
+            seg_loss_sim = seg_loss_sim.item()
+        total_loss_bar +=  seg_loss_sim + seg_loss
 
         # backward pass
         total_loss.backward()
         optimizer.step()
 
         # store current losses
-        if torch.isnan(seg_loss): 
-            losses.append(0)
-        else:
-            losses.append(seg_loss.item())
-        
-        if torch.isnan(seg_loss_sim): 
-            losses_sim.append(0)
-        else:
-            losses_sim.append(seg_loss_sim.item())
+        losses.append(seg_loss)
+        losses_sim.append(seg_loss_sim)
         
         if seg_criterion_2 is not None:
             binary_losses.append(bin_seg_loss.item())
             binary_losses_sim.append(bin_seg_loss_sim.item())
-
         
-        running_loss += total_loss.item() 
+        running_loss += total_loss_bar 
         # print running loss
         if batch_idx % dump_period == dump_period - 1: 
             # this is an approximation because each patch has a different number of valid pixels
