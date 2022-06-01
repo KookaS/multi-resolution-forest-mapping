@@ -209,11 +209,11 @@ class Inference():
             # compute hard predictions
             output_hard = self.exp_utils.decision_func(output)
             output_hard_1 = None
-            # define the targets 
             output_hard_2 = None
             output_hard_sim = self.exp_utils.decision_func(output_sim)
             output_hard_1_sim = None
             output_hard_2_sim = None
+            # define the targets 
             if self.evaluate: 
                 target = target_data
                 if self.binary_map:
@@ -313,10 +313,12 @@ class Inference():
         for batch_idx in range(num_batches):
             # get the prediction for the batch
             if data_low_res is not None:
+                # lower resolution data given, like 1946 iamges
                 input_data = [data[batch_idx].to(self.device) for data in inputs]
                 inputs_low_res, _ = data_low_res
                 input_data_sim = [data[batch_idx].to(self.device) for data in inputs_low_res]
             else:
+                # lower resolution data generated from 2017
                 input_data = [data[batch_idx].to(self.device) for data in inputs]
                 input_data_sim = []
                 for data in inputs:
@@ -496,7 +498,7 @@ class Inference():
             tile_num = self.exp_utils.tilenum_extractor[0](template_fn)
             progress_bar.set_postfix_str('Tiles(s): {}'.format(tile_num))
 
-            # compute forward pass and aggregate outputs
+            # compute forward pass and aggregate outputs for each input type
             batch_data, batch_data_sim, target_data, coords, dims, margins, input_nodata_mask = None, None, None, None, None, None, None
             for i, dataloader_data in enumerate(dataloaders_data):
                 if iteration_keys[i] == 'SI2017':
@@ -591,14 +593,14 @@ class Inference():
                                 dest_scale=self.exp_utils.target_scale)
                 # main segmentation output
                 writer.save_seg_result(self.output_dir, 
-                                        save_hard = self.save_hard, output_hard = output_hard_sim, 
-                                        save_soft = self.save_soft, output_soft = output_sim, 
-                                        colormap = self.exp_utils.colormap)
-                writer.save_seg_result(self.output_dir, 
                                         save_hard = self.save_hard, output_hard = output_hard, 
                                         save_soft = self.save_soft, output_soft = output, 
-                                        suffix = '_sim', 
                                         colormap = self.exp_utils.colormap)
+                writer.save_seg_result(self.output_dir, 
+                                        save_hard = self.save_hard, output_hard = output_hard_sim, 
+                                        save_soft = self.save_soft, output_soft = output_sim, 
+                                        colormap = self.exp_utils.colormap,
+                                        suffix = '_sim')
                 if self.binary_map:
                     # binary forest/non-forest
                     writer.save_seg_result(self.output_dir, 
